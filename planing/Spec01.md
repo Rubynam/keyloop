@@ -2,7 +2,7 @@
 
 > Keyloop Technical Assessment · Scenario A: The Unified Service Scheduler
 > Roadmap: **Phase 2 — Scaffolding**
-> Status: 📝 Draft · Owner: Dai Nam
+> Status: ✅ Implemented · Owner: Dai Nam
 
 ---
 
@@ -12,7 +12,7 @@ Set up the runnable skeleton for the whole system, so that later specs only add 
 
 1. One `docker compose up` brings up **PostgreSQL** and **Redis** (latest stable versions).
 2. A **Gradle multi-project build** contains **two independent Spring Boot applications**:
-   - **PR01 — `scheduler-api`**: handles every REST request/response and talks to PostgreSQL and Redis.
+   - **PR01 — `server-api`**: handles every REST request/response and talks to PostgreSQL and Redis.
    - **PR02 — `scheduler-batch`**: runs background worker jobs with **Spring Batch**.
 3. Each application has **its own Dockerfile**, builds its **own image**, and can be **started, stopped and scaled separately**.
 
@@ -26,7 +26,7 @@ From the [Detail-Level Design](../docs/detail-level-design.md) and decision **D1
 
 | Concern | Lives in | Reason |
 |---|---|---|
-| REST API (availability, booking, cancel, lookups), rate limiting, cache-aside reads | `scheduler-api` | Latency-sensitive, request-driven, scaled by traffic. |
+| REST API (availability, booking, cancel, lookups), rate limiting, cache-aside reads | `server-api` | Latency-sensitive, request-driven, scaled by traffic. |
 | Outbox relay (`outbox_events` → `INCR` Redis version key), outbox cleanup, future periodic jobs | `scheduler-batch` | Time-/poll-driven, must not steal threads or memory from request handling; scaled and restarted independently. |
 
 Splitting them means a crash, a long-running job or a deploy of the worker never affects the API, and vice versa. They share **only the database and Redis**, never in-process state.
@@ -38,7 +38,7 @@ Splitting them means a crash, a long-running job or a deploy of the worker never
 ## 3. Scope
 
 ### In scope
-- `docker-compose.yml` with PostgreSQL, Redis, `scheduler-api`, `scheduler-batch`.
+- `docker-compose.yml` with PostgreSQL, Redis, `server-api`, `scheduler-batch`.
 - Gradle wrapper, root build, two subprojects, shared build conventions.
 - One Dockerfile per subproject (multi-stage, non-root).
 - DB schema bootstrap: `btree_gist` extension + Flyway baseline migration.
@@ -77,23 +77,23 @@ Splitting them means a crash, a long-running job or a deploy of the worker never
 |---|---|
 | GR-01 | Gradle **Wrapper** committed (`gradlew`, `gradle/wrapper/*`) — nobody needs a local Gradle install. Use the latest stable Gradle. |
 | GR-02 | **Kotlin DSL** (`settings.gradle.kts`, `build.gradle.kts`). |
-| GR-03 | Root project name: `keyloop-scheduler`. Subprojects: `scheduler-api`, `scheduler-batch`. |
+| GR-03 | Root project name: `keyloop-scheduler`. Subprojects: `server-api`, `scheduler-batch`. |
 | GR-04 | **Java toolchain 25** (current LTS, matches local JDK). |
 | GR-05 | **Spring Boot**: latest stable (4.x line) — version declared **once** in `gradle/libs.versions.toml` (version catalog). |
 | GR-06 | Shared config (Java version, test setup, encoding, group/version) in the root build or a convention plugin — **no copy-paste** between subprojects. |
 | GR-07 | Root project itself is **not** a Spring Boot app and produces no jar. |
-| GR-08 | Each subproject builds an executable jar independently: `./gradlew :scheduler-api:bootJar`, `./gradlew :scheduler-batch:bootJar`. |
+| GR-08 | Each subproject builds an executable jar independently: `./gradlew :server-api:bootJar`, `./gradlew :scheduler-batch:bootJar`. |
 | GR-09 | `./gradlew build` builds and tests both. |
 | GR-10 | Base package: `com.keyloop.scheduler.api` and `com.keyloop.scheduler.batch`. |
 
 > **Shared code:** the two apps do **not** depend on each other. If they later need shared types (e.g. outbox event payloads), add a third plain-library module `scheduler-common` in a later spec — not now.
 
-### 4.3 PR01 — `scheduler-api`
+### 4.3 PR01 — `server-api`
 
 | ID | Requirement |
 |---|---|
 | API-01 | Dependencies: `spring-boot-starter-web`, `-validation`, `-data-jpa`, `-data-redis`, `-actuator`, PostgreSQL driver, **Flyway** (`flyway-core` + `flyway-database-postgresql`). |
-| API-02 | **API owns the DB schema**: Flyway migrations live in `scheduler-api/src/main/resources/db/migration` and run on startup. |
+| API-02 | **API owns the DB schema**: Flyway migrations live in `server-api/src/main/resources/db/migration` and run on startup. |
 | API-03 | Baseline migration `V1__baseline.sql`: `CREATE EXTENSION IF NOT EXISTS btree_gist;` + `outbox_events` table (columns from D1) so the batch app has something to connect to. |
 | API-04 | `spring.jpa.hibernate.ddl-auto=validate` — Hibernate never changes the schema. |
 | API-05 | Redis via Lettuce, connection settings from env vars. |
@@ -121,7 +121,7 @@ Splitting them means a crash, a long-running job or a deploy of the worker never
 
 | ID | Requirement |
 |---|---|
-| DK-01 | One Dockerfile per app: `scheduler-api/Dockerfile`, `scheduler-batch/Dockerfile`. |
+| DK-01 | One Dockerfile per app: `server-api/Dockerfile`, `scheduler-batch/Dockerfile`. |
 | DK-02 | **Multi-stage**: stage 1 uses a JDK image + Gradle wrapper to build only that module (`./gradlew :<module>:bootJar`); stage 2 uses a **JRE-only** image (e.g. `eclipse-temurin:25-jre-alpine`). |
 | DK-03 | Build context = **repo root** (needs the wrapper and root build files); compose sets `context: .` + `dockerfile: <module>/Dockerfile`. |
 | DK-04 | Use Spring Boot **layered jar** extraction so dependency layers are cached between builds. |
@@ -134,11 +134,11 @@ Splitting them means a crash, a long-running job or a deploy of the worker never
 
 | ID | Requirement |
 |---|---|
-| RUN-01 | Each app is a separate compose service with its own image tag: `keyloop/scheduler-api`, `keyloop/scheduler-batch`. |
-| RUN-02 | `scheduler-api` `depends_on` postgres + redis (`condition: service_healthy`). |
-| RUN-03 | `scheduler-batch` `depends_on` postgres + redis (`service_healthy`) **and** `scheduler-api` (`service_healthy`) — because migrations are owned by the API. |
-| RUN-04 | Each app can be built, started, restarted and scaled alone, e.g. `docker compose up -d --build scheduler-batch`, `docker compose up -d --scale scheduler-batch=2`. |
-| RUN-05 | Each app can also run outside Docker against the compose infra: `./gradlew :scheduler-api:bootRun`. Defaults in `application.yml` point to `localhost`. |
+| RUN-01 | Each app is a separate compose service with its own image tag: `keyloop/server-api`, `keyloop/scheduler-batch`. |
+| RUN-02 | `server-api` `depends_on` postgres + redis (`condition: service_healthy`). |
+| RUN-03 | `scheduler-batch` `depends_on` postgres + redis (`service_healthy`) **and** `server-api` (`service_healthy`) — because migrations are owned by the API. |
+| RUN-04 | Each app can be built, started, restarted and scaled alone, e.g. `docker compose up -d --build scheduler-batch`, `docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --scale scheduler-batch=2` (the override unpublishes host port 8081, which replicas cannot share). |
+| RUN-05 | Each app can also run outside Docker against the compose infra: `./gradlew :server-api:bootRun`. Defaults in `application.yml` point to `localhost`. |
 
 ---
 
@@ -157,7 +157,7 @@ keyloop/
 │   ├── libs.versions.toml
 │   └── wrapper/
 ├── gradlew / gradlew.bat
-├── scheduler-api/                          # PR01
+├── server-api/                          # PR01
 │   ├── Dockerfile
 │   ├── build.gradle.kts
 │   └── src/
@@ -203,7 +203,7 @@ keyloop/
 
 1. **Infra** — `docker-compose.yml` (postgres + redis only), `.env.example`, init SQL. Verify with `docker compose up -d postgres redis`.
 2. **Gradle skeleton** — wrapper, `settings.gradle.kts`, root `build.gradle.kts`, version catalog. Verify `./gradlew projects`.
-3. **PR01 `scheduler-api`** — Boot app, Flyway baseline, ping endpoint, actuator, context-load test. Verify `bootRun` against compose infra.
+3. **PR01 `server-api`** — Boot app, Flyway baseline, ping endpoint, actuator, context-load test. Verify `bootRun` against compose infra.
 4. **PR02 `scheduler-batch`** — Boot app, Batch config in `batch` schema, heartbeat job + scheduler, ShedLock, placeholders. Verify heartbeat logs.
 5. **Dockerfiles** — one per module + `.dockerignore`.
 6. **Compose the apps** — add both services with health checks and `depends_on`.
@@ -213,18 +213,18 @@ keyloop/
 
 ## 8. Acceptance Criteria
 
-- [ ] `docker compose up -d --build` → all 4 services reach **healthy**.
-- [ ] `docker compose exec postgres psql -U scheduler -c '\dx'` lists `btree_gist`.
-- [ ] `curl localhost:8080/api/v1/ping` → `200 {"status":"ok"}`.
-- [ ] `curl localhost:8080/actuator/health` → `UP` with `db` and `redis` components `UP`.
-- [ ] `curl localhost:8081/actuator/health` → `UP` with `db` and `redis` `UP`.
-- [ ] `docker compose logs scheduler-batch` shows `heartbeatJob` completing every ~30 s; rows appear in `batch.batch_job_execution`.
-- [ ] `flyway_schema_history` contains `V1__baseline`; `outbox_events` exists.
-- [ ] `docker compose stop scheduler-batch` → API keeps serving; `docker compose stop scheduler-api` → running batch keeps working.
-- [ ] `docker compose up -d --scale scheduler-batch=2` → heartbeat still runs **once** per tick (ShedLock).
-- [ ] `./gradlew build` passes; `./gradlew :scheduler-api:bootJar` and `:scheduler-batch:bootJar` each produce one jar.
-- [ ] Neither image runs as root (`docker compose exec scheduler-api whoami` ≠ `root`).
-- [ ] No secrets committed; only `.env.example` in git.
+- [x] `docker compose up -d --build` → all 4 services reach **healthy**.
+- [x] `docker compose exec postgres psql -U scheduler -c '\dx'` lists `btree_gist`.
+- [x] `curl localhost:8080/api/v1/ping` → `200 {"status":"ok"}`.
+- [x] `curl localhost:8080/actuator/health` → `UP` with `db` and `redis` components `UP`.
+- [x] `curl localhost:8081/actuator/health` → `UP` with `db` and `redis` `UP`.
+- [x] `docker compose logs scheduler-batch` shows `heartbeatJob` completing every ~30 s; rows appear in `batch.batch_job_execution`.
+- [x] `flyway_schema_history` contains `V1__baseline`; `outbox_events` exists.
+- [x] `docker compose stop scheduler-batch` → API keeps serving; `docker compose stop server-api` → running batch keeps working.
+- [x] `docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --scale scheduler-batch=2` → heartbeat still runs **once** per tick (ShedLock).
+- [x] `./gradlew build` passes; `./gradlew :server-api:bootJar` and `:scheduler-batch:bootJar` each produce one jar.
+- [x] Neither image runs as root (`docker compose exec server-api whoami` ≠ `root`).
+- [x] No secrets committed; only `.env.example` in git.
 
 ---
 

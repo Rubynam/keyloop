@@ -83,8 +83,18 @@ If no valid **(bay, technician) pair** exists → reject the request.
 ### 1.6 Remaining Phase 1 Tasks
 <!-- TODO: resource selection strategy, slot step, tech stack justification -->
 
-## Phase 2 — Scaffolding
-<!-- TODO -->
+## Phase 2 — Scaffolding ✅
+Spec: [`planing/Spec01.md`](planing/Spec01.md)
+- docker-compose: `postgres:18-alpine` (+ `btree_gist`, schema `batch`), `redis:8-alpine` (cache only).
+- Gradle multi-project (Kotlin DSL, wrapper, version catalog, Java 25, Spring Boot 4.1):
+  - `server-api` — REST API, owns Flyway migrations (`V1__baseline`: `outbox_events`).
+  - `scheduler-batch` — Spring Batch (metadata in schema `batch`), `heartbeatJob` sample, ShedLock for multi-replica safety.
+- One Dockerfile per module (multi-stage, layered jar, non-root); each app starts, stops and scales on its own.
+
+Spec: [`planing/Spec02.md`](planing/Spec02.md)
+- `nginx:1.30-alpine` load balancer in front of 2× `server-api`; replicas discovered at runtime (`upstream … resolve` + Docker DNS), no reload on scale.
+- Networks: `edge` / `lb-net` (internal) / `data-net`; nginx cannot reach Postgres/Redis.
+- API: forwarded headers, graceful shutdown, `X-Request-Id` in MDC.
 
 ## Phase 3 — Core Features
 <!-- TODO -->
@@ -134,7 +144,7 @@ If no valid **(bay, technician) pair** exists → reject the request.
 - [ ] Future: swap the relay for CDC (Debezium) if events must also feed other systems.
 
 **Abuse protection (separate concern — cache absorbs load, it does not stop abuse):**
-- [ ] Rate limiting per client (Redis token bucket).
+- [ ] Rate limiting per client (Redis token bucket). Key on the client IP from `X-Forwarded-For` (set by nginx) — `remoteAddr` would be nginx for everyone (Spec02 API-14).
 - [ ] Bound query range (e.g. max 14 days per request).
 
 **Rejected:**

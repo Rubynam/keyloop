@@ -22,6 +22,7 @@ services:
       # Postgres 18+ images keep data under /var/lib/postgresql/<major>/docker
       - pg-data:/var/lib/postgresql
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks: [data-net]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -36,21 +37,30 @@ services:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
+    networks: [data-net]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  scheduler-api:
+  server-api:
     build:
       context: .
-      dockerfile: scheduler-api/Dockerfile
-    image: keyloop/scheduler-api:local
+      dockerfile: server-api/Dockerfile
+    image: keyloop/server-api:local
     environment:
       <<: *app-env
-    ports:
-      - "${API_PORT:-8080}:8080"
+    # No host port: replicas are reached only through nginx (Spec02 API-10).
+    # Scale with: docker compose up -d --scale server-api=3 --no-recreate
+    deploy:
+      replicas: 2
+    # Graceful shutdown in Spring (20 s) must fit inside this
+    stop_grace_period: 30s
+    networks:
+      lb-net:
+        aliases: [server-api]
+      data-net: {}
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,15 +76,45 @@ services:
       <<: *app-env
       HEARTBEAT_CRON: ${HEARTBEAT_CRON:-*/30 * * * * *}
     ports:
-      - "${BATCH_PORTS:-8081-8082}:8081"
+      - "${BATCH_PORT:-8081}:8081"
+    networks: [data-net]
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       # The API owns the Flyway migrations; wait until they have run
-      scheduler-api:
+      server-api:
         condition: service_healthy
+
+  # Single entry point for the API; discovers server-api replicas via Docker DNS (Spec02)
+  nginx:
+    image: nginx:1.30-alpine
+    ports:
+      - "${API_PORT:-8080}:80"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/conf.d:/etc/nginx/conf.d:ro
+    # Not on data-net: the edge can never reach Postgres/Redis
+    networks: [edge, lb-net]
+    depends_on:
+      server-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/nginx-health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  # Only network with a published port
+  edge: {}
+  # nginx <-> server-api, no route to the outside
+  lb-net:
+    internal: true
+  # apps <-> postgres/redis. Not internal in dev only because postgres/redis publish
+  # host ports for IDE runs (Spec01 INF-10); make it internal in production.
+  data-net: {}
 
 volumes:
   pg-data:
