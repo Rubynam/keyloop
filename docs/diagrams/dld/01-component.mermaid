@@ -1,0 +1,62 @@
+flowchart TB
+    CLIENT(["Client"])
+
+    subgraph WEB["Web layer"]
+        direction LR
+        RL["RateLimitFilter"]
+        AC["AppointmentController"]
+        AVC["AvailabilityController"]
+        LC["LookupController"]
+        EH["GlobalExceptionHandler<br/>(RFC 7807)"]
+    end
+
+    subgraph DOMAIN["Domain layer"]
+        direction LR
+        BS["BookingService"]
+        VAL["BookingValidator"]
+        RS["ResourceSelector"]
+        AVS["AvailabilityService<br/>(per vehicle-type pool)"]
+        OBW["OutboxWriter"]
+    end
+
+    subgraph CACHE["Cache layer"]
+        direction LR
+        AC_CACHE["AvailabilityCache"]
+        SF["SingleFlightLock"]
+    end
+
+    subgraph PERSIST["Persistence layer"]
+        direction LR
+        WRITE_REPO["AppointmentRepository<br/>OutboxRepository"]
+        READ_REPO["Dealership · ServiceType · Vehicle<br/>Technician · ServiceBay<br/>Repositories"]
+    end
+
+    subgraph WORKER["Background workers"]
+        direction LR
+        RELAY["OutboxRelay"]
+        CLEAN["OutboxCleanupJob"]
+    end
+
+    REDIS[("Redis")]
+    PG[("PostgreSQL")]
+
+    CLIENT --> RL
+    RL --> AC & AVC & LC
+    AC --> BS
+    AVC --> AVS
+    LC --> READ_REPO
+
+    BS --> VAL & RS & AVS & OBW
+    BS --> WRITE_REPO
+    OBW --> WRITE_REPO
+    AVS --> AC_CACHE
+    AVS --> READ_REPO
+    AC_CACHE --> SF
+
+    PERSIST --> PG
+    CACHE -.-> REDIS
+    RL -.-> REDIS
+
+    RELAY --> WRITE_REPO
+    CLEAN --> WRITE_REPO
+    RELAY -.->|"INCR version key"| REDIS

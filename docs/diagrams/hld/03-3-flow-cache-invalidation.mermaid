@@ -1,0 +1,5 @@
+flowchart LR
+    A["Committed outbox event"] --> B["Outbox Relay"]
+    B --> C["INCR avail:ver:dealer:date"]
+    C --> D["Old cache entries ignored,<br/>expire via TTL"]
+    B --> E["Mark event processed"]

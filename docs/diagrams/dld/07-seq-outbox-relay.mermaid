@@ -1,0 +1,23 @@
+sequenceDiagram
+    autonumber
+    participant PG as PostgreSQL
+    participant W as OutboxRelay
+    participant R as Redis
+
+    PG-->>W: NOTIFY outbox (or polling tick)
+    loop while pending events exist
+        W->>PG: BEGIN
+        W->>PG: SELECT ... WHERE processed_at IS NULL ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED
+        PG-->>W: batch
+        loop each event
+            W->>W: extract (dealershipId, affected dates)
+            W->>R: INCR avail:ver:dealer:date + EXPIRE
+            alt Redis error
+                W->>PG: attempts = attempts + 1
+                Note over W: retry later with backoff
+            else ok
+                W->>PG: processed_at = now()
+            end
+        end
+        W->>PG: COMMIT
+    end

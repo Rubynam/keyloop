@@ -1,0 +1,9 @@
+.git
+.idea
+.gradle
+**/build
+docs
+planing
+*.pdf
+*.md
+.env

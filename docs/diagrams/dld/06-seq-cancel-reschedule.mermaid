@@ -1,0 +1,26 @@
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant BS as BookingService
+    participant PG as PostgreSQL
+
+    alt cancel
+        C->>BS: PATCH /appointments/{id}/cancel
+        BS->>PG: BEGIN
+        BS->>PG: UPDATE status = CANCELLED WHERE status = CONFIRMED
+        BS->>PG: INSERT outbox_events (AppointmentCancelled, date)
+        BS->>PG: COMMIT
+        BS-->>C: 200 OK
+    else reschedule
+        C->>BS: PATCH /appointments/{id}/reschedule (newStart)
+        BS->>PG: BEGIN
+        BS->>PG: UPDATE start_time, end_time (same or new resources)
+        alt exclusion violation
+            BS->>PG: ROLLBACK
+            BS-->>C: 409 Conflict
+        else ok
+            BS->>PG: INSERT outbox_events (AppointmentRescheduled, oldDate, newDate)
+            BS->>PG: COMMIT
+            BS-->>C: 200 OK
+        end
+    end

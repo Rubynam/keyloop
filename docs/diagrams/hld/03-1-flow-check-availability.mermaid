@@ -1,0 +1,8 @@
+flowchart LR
+    A["GET /availability"] --> B{"Rate limit OK?"}
+    B -- "no" --> X["429 Too Many Requests"]
+    B -- "yes" --> C{"Redis cache hit?"}
+    C -- "yes" --> D["Return cached slots"]
+    C -- "no / Redis down" --> E["Compute from PostgreSQL"]
+    E --> F["Store in Redis (TTL)"]
+    F --> D

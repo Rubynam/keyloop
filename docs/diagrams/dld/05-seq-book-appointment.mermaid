@@ -1,0 +1,44 @@
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant AC as AppointmentController
+    participant BS as BookingService
+    participant V as BookingValidator
+    participant AVS as AvailabilityService
+    participant RS as ResourceSelector
+    participant PG as PostgreSQL
+
+    C->>AC: POST /appointments (Idempotency-Key)
+    AC->>BS: book(request)
+    BS->>PG: find appointment by idempotency_key
+    alt key already used
+        PG-->>BS: existing appointment
+        BS-->>C: 201 Created (same appointment)
+    else new request
+        BS->>V: validate(request)
+        alt invalid
+            V-->>C: 400 / 404 ProblemDetail
+        else valid
+            BS->>BS: end = start + serviceType.duration
+            BS->>BS: vehicleType = vehicle.vehicle_type
+            BS->>AVS: findCandidates(dealer, serviceType, vehicleType, start, end)
+            AVS->>PG: free qualified technicians + free bays of pool (no cache)
+            PG-->>AVS: candidates
+            AVS->>RS: order(candidates)
+            RS-->>BS: ordered (bay, technician) pairs
+            loop each pair, max N attempts
+                BS->>PG: BEGIN
+                BS->>PG: INSERT appointment (CONFIRMED)
+                alt exclusion violation (23P01)
+                    PG-->>BS: conflict
+                    BS->>PG: ROLLBACK
+                    Note over BS: try next pair
+                else inserted
+                    BS->>PG: INSERT outbox_events (AppointmentBooked)
+                    BS->>PG: COMMIT
+                    BS-->>C: 201 Created
+                end
+            end
+            BS-->>C: 409 Conflict (no resources available)
+        end
+    end

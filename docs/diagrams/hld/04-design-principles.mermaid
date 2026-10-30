@@ -1,0 +1,20 @@
+mindmap
+  root((Scheduler))
+    Correctness
+      PostgreSQL is the single source of truth
+      Exclusion constraints block overlaps
+      Half-open intervals
+    Performance
+      Redis cache-aside for availability
+      Version-key invalidation
+      Indexes on resource + time
+    Reliability
+      Transactional outbox
+      Fail-open when Redis is down
+      Idempotent invalidation
+    Scalability
+      Stateless API instances
+      SKIP LOCKED relay workers
+    Observability
+      Structured logs
+      Traces (Jaeger)

@@ -1,0 +1,55 @@
+flowchart TD
+    START([Scenario A: Unified Service Scheduler]) --> P1
+
+    subgraph P1["Phase 1 — Discovery & System Design"]
+        P1a[Requirements → acceptance criteria]
+        P1b[Assumptions list]
+        P1c[Domain model]
+        P1d[Architecture diagram]
+        P1e[Data flow — TBD]
+        P1f[Tech choices — TBD]
+    end
+
+    subgraph P2["Phase 2 — Scaffolding"]
+        P2a[Project setup]
+        P2b[PostgreSQL + exclusion constraints<br/>Redis read cache]
+        P2c[CI pipeline]
+    end
+
+    subgraph P3["Phase 3 — Core Features"]
+        R1[R1: Resource-constrained booking]
+        R2[R2: Real-time availability check<br/>ServiceBay + qualified Technician]
+        R3[R3: Confirmed appointment record]
+        R1 --> R2 --> R3
+    end
+
+    subgraph P4["Phase 4 — Testing"]
+        P4a[Unit tests]
+        P4b[Integration tests]
+        P4c[Concurrency / edge cases]
+    end
+
+    subgraph P5["Phase 5 — Build for the Future"]
+        P5a[Logging]
+        P5b[Metrics]
+        P5c[Tracing]
+        P5d[Scalability / reliability notes]
+    end
+
+    subgraph P6["Phase 6 — Docs & Client Stub"]
+        P6a[OpenAPI / cURL examples]
+        P6b[README + AI Collaboration Narrative]
+        P6c[System Design Document final]
+    end
+
+    subgraph P7["Phase 7 — Submission"]
+        P7a[Video 5–10 min]
+        P7b[Final checklist & submit]
+    end
+
+    P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
+
+    AI[[AI collaboration log<br/>runs across all phases]] -.-> P1
+    AI -.-> P3
+    AI -.-> P4
+    AI -.-> P6

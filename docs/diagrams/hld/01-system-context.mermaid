@@ -1,0 +1,11 @@
+flowchart LR
+    CUS(["Customer"])
+    ADV(["Service Advisor"])
+    CLIENT["Client<br/>(stubbed: Swagger UI / cURL / .http)"]
+    SCHED["Unified Service Scheduler"]
+    OBS["Jaeger (tracing)"]
+
+    CUS -->|"check availability, book, cancel"| CLIENT
+    ADV -->|"view dealership schedule"| CLIENT
+    CLIENT -->|"REST / JSON"| SCHED
+    SCHED -->|"traces"| OBS

@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant API
+    participant PG as PostgreSQL
+    participant W as Outbox Relay
+    participant R as Redis
+    API->>PG: BEGIN
+    API->>PG: INSERT appointment (exclusion constraint)
+    API->>PG: INSERT outbox_events (AppointmentBooked)
+    API->>PG: COMMIT (both or neither)
+    PG-->>W: NOTIFY outbox (wake-up) / polling fallback
+    W->>PG: SELECT … FOR UPDATE SKIP LOCKED
+    W->>R: INCR avail:ver:{dealershipId}:{date}
+    W->>PG: mark processed

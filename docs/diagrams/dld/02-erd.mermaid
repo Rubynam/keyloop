@@ -1,0 +1,89 @@
+erDiagram
+    DEALERSHIP ||--o{ SERVICE_BAY : has
+    DEALERSHIP ||--o{ TECHNICIAN : employs
+    DEALERSHIP ||--o{ APPOINTMENT : hosts
+    TECHNICIAN ||--o{ TECHNICIAN_SKILL : has
+    SERVICE_TYPE ||--o{ TECHNICIAN_SKILL : "requires"
+    TECHNICIAN ||--o{ TECHNICIAN_VEHICLE_TYPE : "certified for"
+    CUSTOMER ||--o{ VEHICLE : owns
+    CUSTOMER ||--o{ APPOINTMENT : books
+    VEHICLE ||--o{ APPOINTMENT : "serviced in"
+    SERVICE_TYPE ||--o{ APPOINTMENT : "type of"
+    TECHNICIAN ||--o{ APPOINTMENT : "assigned to"
+    SERVICE_BAY ||--o{ APPOINTMENT : "occupied by"
+
+    DEALERSHIP {
+        uuid id PK
+        string name
+        string timezone "e.g. Asia/Ho_Chi_Minh"
+        time open_time
+        time close_time
+    }
+    SERVICE_BAY {
+        uuid id PK
+        uuid dealership_id FK
+        string name
+        string vehicle_type "PRIVATE_CAR | TRUCK | EV (pool)"
+        boolean active
+    }
+    TECHNICIAN {
+        uuid id PK
+        uuid dealership_id FK
+        string name
+        boolean active
+    }
+    SERVICE_TYPE {
+        uuid id PK
+        string code UK "OIL_CHANGE"
+        string name
+        int duration_minutes
+    }
+    TECHNICIAN_SKILL {
+        uuid technician_id PK, FK
+        uuid service_type_id PK, FK
+    }
+    TECHNICIAN_VEHICLE_TYPE {
+        uuid technician_id PK, FK
+        string vehicle_type PK "PRIVATE_CAR | TRUCK | EV"
+    }
+    CUSTOMER {
+        uuid id PK
+        string name
+        string email
+        string phone
+    }
+    VEHICLE {
+        uuid id PK
+        uuid customer_id FK
+        string vin UK
+        string make
+        string model
+        int year
+        string vehicle_type "PRIVATE_CAR | TRUCK | EV"
+    }
+    APPOINTMENT {
+        uuid id PK
+        uuid customer_id FK
+        uuid vehicle_id FK
+        uuid dealership_id FK
+        uuid service_type_id FK
+        uuid technician_id FK
+        uuid service_bay_id FK
+        string vehicle_type "copied from vehicle, FK with bay"
+        timestamptz start_time
+        timestamptz end_time
+        string status "CONFIRMED | CANCELLED | COMPLETED"
+        string idempotency_key UK "nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    OUTBOX_EVENTS {
+        bigint id PK
+        string aggregate_type "Appointment"
+        uuid aggregate_id
+        string event_type "AppointmentBooked ..."
+        jsonb payload "dealershipId, dates"
+        timestamptz created_at
+        timestamptz processed_at "nullable"
+        int attempts
+    }

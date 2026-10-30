@@ -1,0 +1,7 @@
+stateDiagram-v2
+    [*] --> CONFIRMED: book (201)
+    CONFIRMED --> CONFIRMED: reschedule
+    CONFIRMED --> CANCELLED: cancel
+    CONFIRMED --> COMPLETED: service done
+    CANCELLED --> [*]
+    COMPLETED --> [*]

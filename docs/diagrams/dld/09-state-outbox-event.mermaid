@@ -1,0 +1,5 @@
+stateDiagram-v2
+    [*] --> PENDING: inserted in booking transaction
+    PENDING --> PROCESSED: version key bumped
+    PENDING --> PENDING: Redis error, attempts + 1
+    PROCESSED --> [*]: cleanup after 7 days

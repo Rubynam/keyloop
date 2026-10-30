@@ -1,0 +1,9 @@
+flowchart LR
+    subgraph API["Scheduler API / Outbox Relay"]
+        LOG["JSON logs (stdout)<br/>traceId, dealerId, outcome<br/>(no PII)"]
+        TRC["Traces<br/>HTTP, JDBC, Redis spans"]
+    end
+
+    TRC -->|"OTLP"| JAE["Jaeger"]
+    LOG --> OUT["docker logs / stdout"]
+    LOG -.->|"traceId correlates"| JAE

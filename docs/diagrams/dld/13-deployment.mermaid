@@ -1,0 +1,15 @@
+flowchart TB
+    subgraph DC["docker-compose"]
+        API["scheduler-api<br/>:8080"]
+        RELAY["outbox-relay<br/>(same image, worker profile)"]
+        PG[("postgres:16<br/>+ btree_gist<br/>:5432")]
+        RD[("redis:7<br/>:6379")]
+        JAE["jaeger :16686<br/>(OTLP :4317 / :4318)"]
+    end
+    MIG["DB migrations<br/>(run on API startup)"] --> PG
+    API --> PG
+    API --> RD
+    RELAY --> PG
+    RELAY --> RD
+    API -.->|"OTLP traces"| JAE
+    RELAY -.->|"OTLP traces"| JAE

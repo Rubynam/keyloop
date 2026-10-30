@@ -1,0 +1,11 @@
+flowchart LR
+    APPT["appointment"]
+    APPT --> C1["EXCLUDE USING gist<br/>(technician_id WITH =,<br/>tstzrange(start_time, end_time, '[)') WITH &&)<br/>WHERE status <> 'CANCELLED'"]
+    APPT --> C2["EXCLUDE USING gist<br/>(service_bay_id WITH =,<br/>tstzrange(start_time, end_time, '[)') WITH &&)<br/>WHERE status <> 'CANCELLED'"]
+    APPT --> C3["EXCLUDE USING gist<br/>(vehicle_id WITH =,<br/>tstzrange(...) WITH &&)<br/>WHERE status <> 'CANCELLED'<br/>(assumption TBD)"]
+    APPT --> C4["CHECK end_time > start_time"]
+    APPT --> C5["FOREIGN KEY (service_bay_id, vehicle_type)<br/>REFERENCES service_bay(id, vehicle_type)<br/>(bay must be in the vehicle's pool)"]
+    BAY["service_bay"] --> U1["UNIQUE (id, vehicle_type)<br/>(target of C5)"]
+    BAY --> I3["INDEX (dealership_id, vehicle_type) WHERE active"]
+    APPT --> I1["INDEX (dealership_id, start_time)"]
+    OUT["outbox_events"] --> I2["PARTIAL INDEX (id)<br/>WHERE processed_at IS NULL"]

@@ -1,0 +1,35 @@
+flowchart TB
+    CLIENT["Client<br/>(Swagger UI / cURL)"]
+
+    subgraph APP["Application"]
+        LB["Load Balancer"]
+        API1["Scheduler API<br/>instance 1"]
+        API2["Scheduler API<br/>instance N"]
+        RELAY["Outbox Relay<br/>(background worker)"]
+    end
+
+    subgraph DATA["Data"]
+        PG[("PostgreSQL<br/>source of truth<br/>tstzrange + exclusion constraints<br/>outbox_events")]
+        REDIS[("Redis<br/>availability cache<br/>version keys<br/>rate limit buckets")]
+    end
+
+    subgraph OBS["Observability"]
+        JAEGER["Jaeger<br/>(OTLP traces)"]
+    end
+
+    CLIENT --> LB
+    LB --> API1
+    LB --> API2
+
+    API1 -->|"read / write (transactions)"| PG
+    API2 -->|"read / write (transactions)"| PG
+    API1 -->|"cache-aside reads, rate limit"| REDIS
+    API2 -->|"cache-aside reads, rate limit"| REDIS
+
+    PG -.->|"NOTIFY outbox"| RELAY
+    RELAY -->|"poll SKIP LOCKED, mark processed"| PG
+    RELAY -->|"INCR version key"| REDIS
+
+    API1 -.->|"OTLP traces"| JAEGER
+    API2 -.->|"OTLP traces"| JAEGER
+    RELAY -.->|"OTLP traces"| JAEGER

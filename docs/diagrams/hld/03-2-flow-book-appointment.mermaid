@@ -1,0 +1,8 @@
+flowchart LR
+    A["POST /appointments"] --> B["Validate request"]
+    B --> C["Find free bay + qualified technician"]
+    C --> D["One transaction:<br/>INSERT appointment<br/>INSERT outbox event"]
+    D -- "commit OK" --> E["201 Created"]
+    D -- "exclusion violation" --> F{"Other candidate?"}
+    F -- "yes" --> D
+    F -- "no" --> G["409 Conflict"]

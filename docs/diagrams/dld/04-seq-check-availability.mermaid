@@ -1,0 +1,36 @@
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant RL as RateLimitFilter
+    participant AVS as AvailabilityService
+    participant CA as AvailabilityCache
+    participant R as Redis
+    participant PG as PostgreSQL
+
+    C->>RL: GET /availability (dealer, serviceType, vehicleType, from, to)
+    RL->>R: token bucket check
+    alt limit exceeded
+        RL-->>C: 429 Too Many Requests
+    else allowed
+        RL->>AVS: getAvailability()
+        AVS->>AVS: validate range (max 14 days)
+        loop each date in range
+            AVS->>CA: get(dealer, serviceType, vehicleType, date)
+            CA->>R: GET avail:ver:dealer:date
+            Note over CA,R: version is read BEFORE querying PostgreSQL
+            CA->>R: GET avail:dealer:date:v{ver}:serviceType:vehicleType
+            alt cache hit
+                R-->>CA: slots
+            else cache miss
+                CA->>R: SET lock NX PX (single-flight)
+                CA->>PG: load bays of pool, qualified technicians, active appointments, business hours
+                PG-->>CA: rows
+                CA->>CA: compute free slots
+                CA->>R: SET key slots EX ttl+jitter
+            else Redis unavailable
+                CA->>PG: compute directly (fail-open)
+            end
+            CA-->>AVS: slots for date
+        end
+        AVS-->>C: 200 OK (slots)
+    end
