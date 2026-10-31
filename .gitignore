@@ -32,3 +32,6 @@ build/
 
 # Local secrets
 .env
+
+# IDE (IntelliJ): per-developer settings and data sources
+.idea/
