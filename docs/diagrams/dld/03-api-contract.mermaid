@@ -5,6 +5,6 @@ flowchart LR
         E3["GET /appointments?dealershipId=&date=<br/>200"]
         E4["PATCH /appointments/{id}/cancel<br/>200 | 404 | 409"]
         E5["PATCH /appointments/{id}/reschedule<br/>200 | 404 | 409"]
-        E6["GET /availability?dealershipId=&serviceTypeId=&vehicleType=&from=&to=<br/>200 | 400 | 429"]
-        E7["GET /dealerships, /service-types, /vehicles/{vin}<br/>200 | 404"]
+        E6["GET /availability?dealershipId=&serviceTypeId=&vehicleTypeId=&from=&to=<br/>200 | 400 | 429"]
+        E7["GET /dealerships, /service-types, /vehicle-types, /car-info, /vehicles/{vin}<br/>200 | 404"]
     end

@@ -1,86 +1,106 @@
 erDiagram
-    DEALERSHIP ||--o{ SERVICE_BAY : has
-    DEALERSHIP ||--o{ TECHNICIAN : employs
-    DEALERSHIP ||--o{ APPOINTMENT : hosts
-    TECHNICIAN ||--o{ TECHNICIAN_SKILL : has
-    SERVICE_TYPE ||--o{ TECHNICIAN_SKILL : "requires"
-    TECHNICIAN ||--o{ TECHNICIAN_VEHICLE_TYPE : "certified for"
-    CUSTOMER ||--o{ VEHICLE : owns
-    CUSTOMER ||--o{ APPOINTMENT : books
-    VEHICLE ||--o{ APPOINTMENT : "serviced in"
-    SERVICE_TYPE ||--o{ APPOINTMENT : "type of"
-    TECHNICIAN ||--o{ APPOINTMENT : "assigned to"
-    SERVICE_BAY ||--o{ APPOINTMENT : "occupied by"
+    DEALERSHIPS ||--o{ SERVICE_BAYS : has
+    DEALERSHIPS ||--o{ TECHNICIANS : employs
+    DEALERSHIPS ||--o{ APPOINTMENTS : hosts
+    VEHICLE_TYPES ||--o{ CAR_INFO : "category of"
+    VEHICLE_TYPES ||--o{ SERVICE_BAY_VEHICLE_TYPES : "accepted by"
+    SERVICE_BAYS ||--o{ SERVICE_BAY_VEHICLE_TYPES : accepts
+    VEHICLE_TYPES ||--o{ TECHNICIAN_VEHICLE_TYPES : "certified for"
+    TECHNICIANS ||--o{ TECHNICIAN_VEHICLE_TYPES : "certified for"
+    TECHNICIANS ||--o{ TECHNICIAN_SKILLS : has
+    SERVICE_TYPES ||--o{ TECHNICIAN_SKILLS : "requires"
+    CAR_INFO ||--o{ VEHICLES : "model of"
+    CUSTOMERS ||--o{ VEHICLES : owns
+    CUSTOMERS ||--o{ APPOINTMENTS : books
+    VEHICLES ||--o{ APPOINTMENTS : "serviced in"
+    SERVICE_TYPES ||--o{ APPOINTMENTS : "type of"
+    TECHNICIANS ||--o{ APPOINTMENTS : "assigned to"
+    SERVICE_BAYS ||--o{ APPOINTMENTS : "occupied by"
 
-    DEALERSHIP {
-        uuid id PK
+    DEALERSHIPS {
+        uuid id PK "UUIDv7"
         string name
         string timezone "e.g. Asia/Ho_Chi_Minh"
         time open_time
-        time close_time
+        time close_time "24:00 allowed"
+        timestamptz created_at
     }
-    SERVICE_BAY {
-        uuid id PK
+    VEHICLE_TYPES {
+        uuid id PK "UUIDv7"
+        string code UK "GASOLINE_CAR, ELECTRIC_CAR, DIESEL_TRUCK ..."
+        string name "Gasoline-powered car"
+    }
+    CAR_INFO {
+        uuid id PK "UUIDv7"
+        string name "Vios"
+        uuid vehicle_type_id FK "GASOLINE_CAR"
+        string brand "TOYOTA"
+    }
+    SERVICE_BAYS {
+        uuid id PK "UUIDv7"
         uuid dealership_id FK
         string name
-        string vehicle_type "PRIVATE_CAR | TRUCK | EV (pool)"
         boolean active
     }
-    TECHNICIAN {
-        uuid id PK
+    SERVICE_BAY_VEHICLE_TYPES {
+        uuid service_bay_id PK, FK
+        uuid vehicle_type_id PK, FK
+    }
+    TECHNICIANS {
+        uuid id PK "UUIDv7"
         uuid dealership_id FK
         string name
         boolean active
     }
-    SERVICE_TYPE {
-        uuid id PK
+    SERVICE_TYPES {
+        uuid id PK "UUIDv7"
         string code UK "OIL_CHANGE"
         string name
-        int duration_minutes
+        int duration_minutes "1..1440"
     }
-    TECHNICIAN_SKILL {
+    TECHNICIAN_SKILLS {
         uuid technician_id PK, FK
         uuid service_type_id PK, FK
     }
-    TECHNICIAN_VEHICLE_TYPE {
+    TECHNICIAN_VEHICLE_TYPES {
         uuid technician_id PK, FK
-        string vehicle_type PK "PRIVATE_CAR | TRUCK | EV"
+        uuid vehicle_type_id PK, FK
     }
-    CUSTOMER {
-        uuid id PK
+    CUSTOMERS {
+        uuid id PK "UUIDv7"
         string name
-        string email
-        string phone
+        string email "nullable, unique ignoring case"
+        string phone "nullable, E.164"
+        timestamptz created_at
     }
-    VEHICLE {
-        uuid id PK
+    VEHICLES {
+        uuid id PK "UUIDv7"
         uuid customer_id FK
+        uuid car_info_id FK
+        uuid vehicle_type_id "copy of car_info's, FK with car_info"
         string vin UK
-        string make
-        string model
         int year
-        string vehicle_type "PRIVATE_CAR | TRUCK | EV"
     }
-    APPOINTMENT {
-        uuid id PK
+    APPOINTMENTS {
+        uuid id PK "UUIDv7"
         uuid customer_id FK
         uuid vehicle_id FK
         uuid dealership_id FK
         uuid service_type_id FK
         uuid technician_id FK
         uuid service_bay_id FK
-        string vehicle_type "copied from vehicle, FK with bay"
+        uuid vehicle_type_id "copied from vehicle, FK with bay + technician"
         timestamptz start_time
         timestamptz end_time
-        string status "CONFIRMED | CANCELLED | COMPLETED"
+        string status "AppointmentStatus (Java enum)"
         string idempotency_key UK "nullable"
         timestamptz created_at
         timestamptz updated_at
     }
     OUTBOX_EVENTS {
-        bigint id PK
+        uuid id PK "UUIDv7"
         string aggregate_type "Appointment"
-        uuid aggregate_id
+        string aggregate_id
         string event_type "AppointmentBooked ..."
         jsonb payload "dealershipId, dates"
         timestamptz created_at

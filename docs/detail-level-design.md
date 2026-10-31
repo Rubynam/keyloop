@@ -14,7 +14,7 @@
 |---|---|
 | `RateLimitFilter` | Token bucket per client in Redis → `429` when exceeded. Fail-open if Redis is down. |
 | `BookingValidator` | Entities exist, vehicle belongs to customer, start in the future, slot within business hours. |
-| `AvailabilityService` | Computes free slots / free (bay, technician) candidates for a window **within the vehicle-type pool**. Uses the cache for list queries. |
+| `AvailabilityService` | Computes free slots / free (bay, technician) candidates for a window **for the vehicle's type** (bays and technicians that take it, D2). Uses the cache for list queries. |
 | `ResourceSelector` | Orders candidates (strategy **TBD**: lowest id, least loaded, …). |
 | `BookingService` | Transaction: insert appointment + outbox event; retries next candidate on exclusion violation. |
 | `AvailabilityCache` | Versioned cache-aside over Redis with TTL + jitter, stampede protection. |
@@ -25,6 +25,10 @@
 ## 2. Data Model (ERD)
 
 📊 Diagram: [`diagrams/dld/02-erd.mermaid`](diagrams/dld/02-erd.mermaid)
+
+- Every id is a **UUIDv7** (`DEFAULT uuidv7()`, Postgres 18): time-ordered, so new rows append to the primary-key index.
+- Vehicle types are **data** (`vehicle_types`), models live in `car_info` (name, type, brand); bays and technicians link to vehicle types M:N (ROADMAP D2).
+- Schema: [`V2__domain_schema.sql`](../server-api/src/main/resources/db/migration/V2__domain_schema.sql) · spec: [Spec03](../planing/Spec03.md).
 
 ### Constraints & indexes
 

@@ -2,8 +2,8 @@ flowchart LR
     E1["Validation error"] --> H1["400 Bad Request"]
     E2["Unknown dealer / vehicle / service type"] --> H2["404 Not Found"]
     E3["Vehicle not owned by customer"] --> H1
-    E4["No free bay + technician in the vehicle's pool"] --> H3["409 Conflict"]
-    E9["Dealership has no pool for vehicle type"] --> H7["422 Unprocessable Entity"]
+    E4["No free bay + technician for the vehicle type"] --> H3["409 Conflict"]
+    E9["No bay or technician at the dealership takes the vehicle type"] --> H7["422 Unprocessable Entity"]
     E5["Exclusion violation after all retries"] --> H3
     E6["Rate limit exceeded"] --> H4["429 Too Many Requests"]
     E7["Redis unavailable"] --> H5["Fail-open: serve from PostgreSQL<br/>+ log + span event"]

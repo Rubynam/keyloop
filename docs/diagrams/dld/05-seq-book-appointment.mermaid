@@ -20,16 +20,17 @@ sequenceDiagram
             V-->>C: 400 / 404 ProblemDetail
         else valid
             BS->>BS: end = start + serviceType.duration
-            BS->>BS: vehicleType = vehicle.vehicle_type
-            BS->>AVS: findCandidates(dealer, serviceType, vehicleType, start, end)
-            AVS->>PG: free qualified technicians + free bays of pool (no cache)
+            BS->>BS: vehicleTypeId = vehicle.vehicle_type_id (from car_info)
+            BS->>AVS: findCandidates(dealer, serviceType, vehicleTypeId, start, end)
+            AVS->>PG: free qualified technicians + free bays that take the vehicle type (no cache)
             PG-->>AVS: candidates
             AVS->>RS: order(candidates)
+            Note over RS: bays taking the fewest vehicle types first
             RS-->>BS: ordered (bay, technician) pairs
             loop each pair, max N attempts
                 BS->>PG: BEGIN
-                BS->>PG: INSERT appointment (CONFIRMED)
-                alt exclusion violation (23P01)
+                BS->>PG: INSERT appointment (CONFIRMED, id = uuidv7())
+                alt exclusion violation (23P01) or FK violation (23503)
                     PG-->>BS: conflict
                     BS->>PG: ROLLBACK
                     Note over BS: try next pair

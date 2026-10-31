@@ -1,8 +1,8 @@
 flowchart TD
-    S(["Input: dealer, serviceType, vehicleType, date"]) --> A["duration = serviceType.duration_minutes"]
+    S(["Input: dealer, serviceType, vehicleTypeId, date"]) --> A["duration = serviceType.duration_minutes"]
     A --> B["Load business hours (dealer timezone → UTC)"]
-    B --> C["Load active bays of dealer<br/>WHERE vehicle_type = vehicleType (pool)"]
-    B --> D["Load active technicians with skill = serviceType<br/>AND certified for vehicleType"]
+    B --> C["Load active bays of dealer<br/>JOIN service_bay_vehicle_types<br/>WHERE vehicle_type_id = vehicleTypeId"]
+    B --> D["Load active technicians with skill = serviceType<br/>AND certified for vehicleTypeId"]
     C --> E["Load non-cancelled appointments overlapping the day<br/>for those bays / technicians"]
     D --> E
     E --> F["Generate candidate start times<br/>(slot step TBD, e.g. 15 min)"]

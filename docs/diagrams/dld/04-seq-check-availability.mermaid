@@ -7,7 +7,7 @@ sequenceDiagram
     participant R as Redis
     participant PG as PostgreSQL
 
-    C->>RL: GET /availability (dealer, serviceType, vehicleType, from, to)
+    C->>RL: GET /availability (dealer, serviceType, vehicleTypeId, from, to)
     RL->>R: token bucket check
     alt limit exceeded
         RL-->>C: 429 Too Many Requests
@@ -15,15 +15,15 @@ sequenceDiagram
         RL->>AVS: getAvailability()
         AVS->>AVS: validate range (max 14 days)
         loop each date in range
-            AVS->>CA: get(dealer, serviceType, vehicleType, date)
+            AVS->>CA: get(dealer, serviceType, vehicleTypeId, date)
             CA->>R: GET avail:ver:dealer:date
             Note over CA,R: version is read BEFORE querying PostgreSQL
-            CA->>R: GET avail:dealer:date:v{ver}:serviceType:vehicleType
+            CA->>R: GET avail:dealer:date:v{ver}:serviceType:vehicleTypeId
             alt cache hit
                 R-->>CA: slots
             else cache miss
                 CA->>R: SET lock NX PX (single-flight)
-                CA->>PG: load bays of pool, qualified technicians, active appointments, business hours
+                CA->>PG: load bays that take the vehicle type, qualified technicians, active appointments, business hours
                 PG-->>CA: rows
                 CA->>CA: compute free slots
                 CA->>R: SET key slots EX ttl+jitter

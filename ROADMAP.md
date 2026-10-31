@@ -46,7 +46,7 @@ Example: *Vehicle VIN `WVW123…` (owner: Customer A) wants an oil change (60 mi
 A **physical workspace** in the workshop (a slot with a lift and tools) where the vehicle is parked while being serviced.
 - Holds **one vehicle** at a time.
 - Occupied for the **entire** service duration.
-- Bays are **pooled by vehicle type** (`PRIVATE_CAR`, `TRUCK`, `EV`) — see [D2](#d2--resource-pools-by-vehicle-type-). A vehicle can only use a bay from its own pool (a truck needs a heavy-duty lift, an EV needs an insulated / high-voltage bay).
+- Each bay **takes a set of vehicle types** (`GASOLINE_CAR`, `ELECTRIC_CAR`, `DIESEL_TRUCK`, …) — see [D2](#d2--vehicle-types-as-data-bays-and-technicians-mm-). A vehicle can only use a bay that takes its type (a truck needs a heavy-duty lift, an EV needs an insulated / high-voltage bay; a hybrid fits both a standard and a high-voltage bay).
 
 #### Qualified Technician
 A **technician whose skills / certifications match the service type**.
@@ -71,9 +71,9 @@ Tech C:                                ✓ free + qualified
 If no valid **(bay, technician) pair** exists → reject the request.
 
 ### 1.4 Ambiguities → Assumptions to Decide
-- [x] Are bays typed / specialised? → **Yes, by vehicle type** (pool per `PRIVATE_CAR` / `TRUCK` / `EV`), see D2.
+- [x] Are bays typed / specialised? → **Yes, by vehicle type**; one bay may take several types (M:N), see D2.
+- [x] Can one vehicle have overlapping appointments? → **No** (exclusion constraint on `vehicle_id`, Spec03 DB-03).
 - [ ] Buffer time between consecutive appointments?
-- [ ] Can one vehicle have overlapping appointments?
 - [ ] Are customer / vehicle pre-existing or created during booking?
 
 ### 1.5 Design Documents
@@ -98,8 +98,9 @@ Spec: [`planing/Spec02.md`](planing/Spec02.md)
 
 ## Phase 3 — Core Features
 Spec: [`planing/Spec03.md`](planing/Spec03.md)
-- Flyway `V2__domain_schema`: all ERD tables; exclusion constraints on technician / bay / vehicle; composite FKs for pool (D2) and dealership.
-- Enum values (`VehicleType`, `AppointmentStatus`) defined in Java only, no DB `CHECK` lists.
+- Flyway `V2__domain_schema`: all ERD tables; exclusion constraints on technician / bay / vehicle; composite FKs for vehicle-type fit, skill, certification (D2) and dealership.
+- Vehicle types are data: `vehicle_types` lookup + `car_info` model catalogue ("Vios — gasoline-powered car — TOYOTA"); bays and technicians ↔ vehicle types are M:N (D2).
+- `AppointmentStatus` is a Java enum, no DB `CHECK` list. All ids are UUIDv7 (`uuidv7()`).
 - `seeding/`: 100 rows per table with tagged edge cases (time zones, DST, durations, capacity, lifecycle, outbox states).
 
 ## Phase 4 — Testing
@@ -128,8 +129,8 @@ Spec: [`planing/Spec03.md`](planing/Spec03.md)
 **Why it is safe:** a stale cache can only show a slot as free when it is not → the booking still hits the DB constraint → `409 Conflict`. Stale reads cost UX, never correctness.
 
 **Read path — cache-aside:**
-- [ ] Key: `avail:{dealershipId}:{serviceTypeId}:{vehicleType}:{date}` — no VIN in the key (availability depends only on the vehicle type pool, see D2) → higher hit rate.
-- [ ] Versioned physical key: `avail:{dealershipId}:{date}:v{ver}:{serviceTypeId}:{vehicleType}`, with `ver = GET avail:ver:{dealershipId}:{date}` read **before** querying PostgreSQL.
+- [ ] Key: `avail:{dealershipId}:{serviceTypeId}:{vehicleTypeId}:{date}` — no VIN in the key (availability depends only on the vehicle type, see D2) → higher hit rate.
+- [ ] Versioned physical key: `avail:{dealershipId}:{date}:v{ver}:{serviceTypeId}:{vehicleTypeId}`, with `ver = GET avail:ver:{dealershipId}:{date}` read **before** querying PostgreSQL.
 - [ ] Miss → compute from PostgreSQL → `SET` with short TTL (e.g. 30–60s) + jitter.
 - [ ] Stampede protection on cache miss (single-flight / short lock).
 - [ ] Fail-open: Redis down → read from PostgreSQL.
@@ -156,33 +157,41 @@ Spec: [`planing/Spec03.md`](planing/Spec03.md)
 - Write-through cache — the value is derived from many tables, one booking affects every service type at that dealership and date, and concurrent writes can overwrite newer values with stale ones.
 - Direct invalidation right after commit — lost if the app crashes between commit and the Redis call; the outbox makes invalidation part of the transaction.
 
-### D2 — Resource pools by vehicle type ✅
+### D2 — Vehicle types as data; bays and technicians M:N ✅
 
-**Problem:** Not every bay / technician can service every vehicle. A truck needs a heavy-duty lift; an EV needs an insulated bay and a high-voltage certified technician.
+**Problem:** Not every bay / technician can service every vehicle. A truck needs a heavy-duty lift; an EV needs an insulated bay and a high-voltage certified technician. A fixed 3-value enum (`PRIVATE_CAR`, `TRUCK`, `EV`) was too coarse (a diesel car and a hybrid are different jobs) and needed a code change for every new category.
 
-**Decision:**
-- `vehicle_type` enum: `PRIVATE_CAR`, `TRUCK`, `EV` (extensible, e.g. `MOTORBIKE`, `VAN`).
-- `vehicle.vehicle_type` — each vehicle belongs to exactly one type.
-- `service_bay.vehicle_type` — each bay belongs to exactly **one pool**.
-- `technician_vehicle_type(technician_id, vehicle_type)` — a technician may be certified for several types.
+**Decision (Spec03):**
+- `vehicle_types(id, code, name)` — a **lookup table**, e.g. `GASOLINE_CAR` "Gasoline-powered car", `DIESEL_CAR`, `HYBRID_CAR`, `ELECTRIC_CAR`, `DIESEL_TRUCK`, `ELECTRIC_TRUCK`. A new category is a row, not a release.
+- `car_info(id, name, vehicle_type_id, brand)` — **model catalogue**: *Vios → gasoline-powered car → TOYOTA*. The same name may exist with two powertrains (Corolla Cross gasoline / hybrid).
+- `vehicles.car_info_id` — a vehicle is an instance of a model; its type comes from the model. `vehicles.vehicle_type_id` is a copy, kept equal by FK `(car_info_id, vehicle_type_id) → car_info(id, vehicle_type_id)`.
+- `service_bay_vehicle_types(service_bay_id, vehicle_type_id)` — **M:N**: a standard bay takes gasoline, diesel and hybrid cars; a high-voltage bay takes EVs and hybrids; a heavy HV bay takes diesel and electric trucks.
+- `technician_vehicle_types(technician_id, vehicle_type_id)` — certifications, M:N.
 - **Qualified technician** = has skill for the service type **AND** is certified for the vehicle type.
-- Booking derives the pool from the vehicle (`vehicle.vehicle_type`); the client never chooses it.
-- `appointment.vehicle_type` is stored and enforced with a composite FK `(service_bay_id, vehicle_type) → service_bay(id, vehicle_type)` → the DB itself rejects a truck in a private-car bay.
-- Availability and cache key are scoped per pool: `avail:{dealershipId}:{date}:v{ver}:{serviceTypeId}:{vehicleType}`. Version key stays per dealership + date (one bump invalidates all pools — simple, and bookings are rare compared to reads).
+- Booking derives the type from the vehicle; the client never chooses it.
+- `appointments.vehicle_type_id` is stored, and the DB itself checks the fit with composite FKs: `(service_bay_id, vehicle_type_id) → service_bay_vehicle_types`, `(technician_id, vehicle_type_id) → technician_vehicle_types`, `(technician_id, service_type_id) → technician_skills`, `(vehicle_id, vehicle_type_id) → vehicles`. A truck in a car bay, or a technician without the skill, is rejected by PostgreSQL.
+- **Bay selection:** when several bays fit, pick the bay that takes the **fewest vehicle types** first, so flexible / scarce bays (a heavy bay that also takes diesel cars) stay free for vehicles only they can take.
+- Availability and cache key are scoped per vehicle type: `avail:{dealershipId}:{date}:v{ver}:{serviceTypeId}:{vehicleTypeId}`. Version key stays per dealership + date (one bump invalidates all types — simple, and bookings are rare compared to reads).
 
 ```
-Request: EV, battery check (60 min), 10:00–11:00, District 7
-Pool EV:          Bay E1 ✗ busy   Bay E2 ✓ free
-Pool PRIVATE_CAR: Bay P1 ✓ free   ← ignored (wrong pool)
-Tech A: skill ✓, EV cert ✗        ✗ not qualified
-Tech C: skill ✓, EV cert ✓, free  ✓
-→ Bay E2 + Tech C
+Request: hybrid car (Corolla Cross HV), tyre rotation, 10:00–10:30, District 7
+Bay 01 (gasoline, diesel, hybrid)   ✓ free
+EV Bay 01 (electric, hybrid)        ✓ free     ← both fit; same type count → either
+Heavy Bay 04 (diesel truck, diesel car) ✗ does not take hybrids
+Tech A: skill ✓, hybrid cert ✗      ✗ not qualified
+Tech C: skill ✓, hybrid cert ✓, free ✓
+→ Bay 01 + Tech C
 ```
+
+**Trade-offs:**
+- Qualification FKs make history strict: a certification or skill row that past appointments use cannot be deleted. Remove it only after those appointments are archived, or keep it and stop new bookings in the service layer.
+- A model's vehicle type cannot change once vehicles use it (composite FK, no cascade) — correct a wrong catalogue entry with a deliberate migration.
 
 **Rejected / future:**
-- Bay supports many vehicle types (`service_bay_vehicle_type` M:N, e.g. a truck bay also taking cars) — more flexible but needs a selection strategy to avoid wasting scarce truck bays on cars. Can be added later without breaking the API.
-- Duration per (service type, vehicle type) — e.g. truck oil change longer. Future: `service_type_duration(service_type_id, vehicle_type, minutes)` with fallback to the default.
+- Java enum / DB `CHECK` list for vehicle types — needs a code change per new category (was the first Spec03 version).
+- One bay = one type — a diesel car could not use a gasoline car's bay.
+- Duration per (service type, vehicle type) — e.g. truck oil change longer. Future: `service_type_durations(service_type_id, vehicle_type_id, minutes)` with fallback to the default.
 
 ## Open Decisions
-- [ ] Resource selection strategy (how technician / bay are picked)
+- [ ] Resource selection strategy (how technician / bay are picked) — bay part decided in D2 (fewest vehicle types first)
 - [ ] Data flow
