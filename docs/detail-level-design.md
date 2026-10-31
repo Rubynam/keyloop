@@ -17,7 +17,7 @@
 | `AvailabilityService` | Computes free slots / free (bay, technician) candidates for a window **for the vehicle's type** (bays and technicians that take it, D2). Uses the cache for list queries. |
 | `ResourceSelector` | Orders candidates (strategy **TBD**: lowest id, least loaded, …). |
 | `BookingService` | Transaction: insert appointment + outbox event; retries next candidate on exclusion violation. |
-| `AvailabilityCache` | Versioned cache-aside over Redis with TTL + jitter, stampede protection. |
+| `AvailabilityCache` | Versioned cache-aside over Redis with TTL + random padding, stampede protection (single-flight lock per version, Lua owner release). Spec: [spec-availability-ops](../_bmad-output/specs/spec-availability-ops/SPEC.md). |
 | `OutboxRelay` | Reads committed events with `SKIP LOCKED`, bumps version keys, marks processed. |
 
 ---

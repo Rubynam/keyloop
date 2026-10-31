@@ -128,11 +128,13 @@ Spec: [`planing/Spec03.md`](planing/Spec03.md)
 
 **Why it is safe:** a stale cache can only show a slot as free when it is not → the booking still hits the DB constraint → `409 Conflict`. Stale reads cost UX, never correctness.
 
-**Read path — cache-aside:**
+**Read path — cache-aside** (spec: [`spec-availability-ops`](_bmad-output/specs/spec-availability-ops/SPEC.md), details in its `cache-read-path.md`):
 - [ ] Key: `avail:{dealershipId}:{serviceTypeId}:{vehicleTypeId}:{date}` — no VIN in the key (availability depends only on the vehicle type, see D2) → higher hit rate.
-- [ ] Versioned physical key: `avail:{dealershipId}:{date}:v{ver}:{serviceTypeId}:{vehicleTypeId}`, with `ver = GET avail:ver:{dealershipId}:{date}` read **before** querying PostgreSQL.
-- [ ] Miss → compute from PostgreSQL → `SET` with short TTL (e.g. 30–60s) + jitter.
-- [ ] Stampede protection on cache miss (single-flight / short lock).
+- [ ] Versioned physical key: `avail:{dealershipId}:{date}:v{ver}:{serviceTypeId}:{vehicleTypeId}`, with `ver = GET avail:ver:{dealershipId}:{date}` read **before** querying PostgreSQL. A missing version key reads as `0`.
+- [ ] Cached value = the **full day's** slots; slots with `start < now` are dropped per request, after the cache (never serve a slot that has started).
+- [ ] Miss → compute from PostgreSQL → `SET` with TTL 30 s + random padding 0–30 s (spreads expiry so keys built together do not expire together). TTL and padding come from config.
+- [ ] Stampede protection (request coalescing): lock `avail:lock:{dealershipId}:{date}:v{ver}:{serviceTypeId}:{vehicleTypeId}` via `SET NX PX 2s` with an owner token; the version is in the lock key so an old version's lock cannot block the next rebuild. Others poll the cache up to 100 ms (config), then compute from PostgreSQL without writing the cache. Release by a Lua compare-and-delete run through `StringRedisTemplate`.
+- [ ] Slot-list TTL (≤ 60 s) stays far shorter than the version-key TTL (2 days), so a version reset to `0` never meets an old `:v0:` entry.
 - [ ] Fail-open: Redis down → read from PostgreSQL.
 
 **Write path — event-driven invalidation (transactional outbox):**
@@ -149,8 +151,8 @@ Spec: [`planing/Spec03.md`](planing/Spec03.md)
 - [ ] Future: swap the relay for CDC (Debezium) if events must also feed other systems.
 
 **Abuse protection (separate concern — cache absorbs load, it does not stop abuse):**
-- [ ] Rate limiting per client (Redis token bucket). Key on the client IP from `X-Forwarded-For` (set by nginx) — `remoteAddr` would be nginx for everyone (Spec02 API-14).
-- [ ] Bound query range (e.g. max 14 days per request).
+- [ ] Rate limiting per client (Redis token bucket) for all `/api/v1`, 20 req/s, burst 40, from config — **its own spec** (see `_bmad-output/implementation-artifacts/deferred-work.md`). Key on the client IP from `X-Forwarded-For` (set by nginx) — `remoteAddr` would be nginx for everyone (Spec02 API-14).
+- [x] Bound query range: max 14 days per request ([`spec-check-availability`](_bmad-output/specs/spec-check-availability/SPEC.md)).
 
 **Rejected:**
 - TimescaleDB — appointments are not time-series (low volume, mutable); hypertables restrict exclusion / unique constraints across chunks.
@@ -194,5 +196,5 @@ Tech C: skill ✓, hybrid cert ✓, free ✓
 - Duration per (service type, vehicle type) — e.g. truck oil change longer. Future: `service_type_durations(service_type_id, vehicle_type_id, minutes)` with fallback to the default.
 
 ## Open Decisions
-- [ ] Resource selection strategy (how technician / bay are picked) — bay part decided in D2 (fewest vehicle types first)
+- [x] Resource selection strategy — bays: fewest vehicle types first (D2); technicians: fewest appointments that local day first; up to 3 pairs, diagonal so each differs in bay and technician (`spec-availability-ops/candidate-selection.md`)
 - [ ] Data flow

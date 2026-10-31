@@ -1,9 +1,10 @@
 flowchart LR
     subgraph KEYS["Redis keys"]
-        K1["avail:ver:{dealerId}:{date}<br/>INT · bumped by relay · TTL 2 days"]
-        K2["avail:{dealerId}:{date}:v{ver}:{serviceTypeId}:{vehicleTypeId}<br/>JSON slots · TTL 30–60s + jitter"]
-        K3["avail:lock:{dealerId}:{date}:{serviceTypeId}:{vehicleTypeId}<br/>single-flight · PX 2s"]
+        K1["avail:ver:{dealerId}:{date}<br/>INT · bumped by relay · TTL 2 days · missing = 0"]
+        K2["avail:{dealerId}:{date}:v{ver}:{serviceTypeId}:{vehicleTypeId}<br/>JSON slots (full day) · TTL 30s + random padding 0–30s"]
+        K3["avail:lock:{dealerId}:{date}:v{ver}:{serviceTypeId}:{vehicleTypeId}<br/>single-flight · owner token · PX 2s · Lua release"]
         K4["ratelimit:{clientId}<br/>token bucket"]
     end
     K1 -->|"selects current"| K2
+    K1 -->|"selects current"| K3
     K3 -.->|"guards rebuild of"| K2
