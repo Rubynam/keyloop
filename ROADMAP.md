@@ -139,11 +139,12 @@ Spec: [`planing/Spec03.md`](planing/Spec03.md)
 
 📊 Diagram: [`docs/diagrams/roadmap/d1-outbox-invalidation.mermaid`](docs/diagrams/roadmap/d1-outbox-invalidation.mermaid)
 
-- [ ] `outbox_events(id, aggregate_type, aggregate_id, event_type, payload jsonb, created_at, processed_at)` written **in the same transaction** as the appointment change.
+- [ ] `outbox_events(id, aggregate_type, aggregate_id, event_type, payload jsonb, created_at, processed_at, attempts, next_attempt_at, failed_at, last_error)` written **in the same transaction** as the appointment change.
 - [ ] Events: `AppointmentBooked`, `AppointmentCancelled`, `AppointmentRescheduled` (old + new date), later `BayBlocked`, `TechnicianUnavailable`, `BusinessHoursChanged`.
-- [ ] Relay: polling worker with `FOR UPDATE SKIP LOCKED` (safe with multiple instances) + `LISTEN/NOTIFY` for low latency.
+- [ ] Relay: plain `@Scheduled` polling worker (not a Batch job, [Spec04](planing/Spec04.md) Q1) with `FOR UPDATE SKIP LOCKED` (safe with multiple instances). `LISTEN/NOTIFY` deferred: a 500 ms poll is enough (Spec04 §11).
 - [ ] At-least-once delivery is fine: invalidation (`INCR`) is idempotent in effect → no dedup needed.
-- [ ] Retry with backoff; cleanup of processed rows (e.g. > 7 days).
+- [ ] Retry: 1 try + max 3 retries, fixed 2 s apart, then FAILED + English ERROR log; the booking is never changed (Spec04 §4.3).
+- [ ] Cleanup (daily Spring Batch job): PROCESSED > 7 days, FAILED > 30 days, Batch metadata > 7 days (Spec04 CLN-02/03).
 - [ ] Metrics: outbox pending count, relay lag, relay failures. *(deferred — no Prometheus/Grafana yet; tracing via Jaeger only)*
 - [ ] Future: swap the relay for CDC (Debezium) if events must also feed other systems.
 

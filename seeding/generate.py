@@ -845,18 +845,35 @@ assert len(events) == ROWS, len(events)
 events.sort(key=lambda e: e["created"])
 for i, e in enumerate(events, 1):
     e["n"], e["id"] = i, uuid7(e["created"])
-    e["attempts"] = 0
+    e["attempts"], e["next"], e["failed"], e["error"] = 0, e["created"], None, None
     if ANCHOR - e["created"] > timedelta(hours=1):
         e["processed"] = e["created"] + timedelta(milliseconds=rng.randrange(5, 1500))
     else:
         e["processed"] = None
+
+
+def retried(e, attempts):
+    """attempts failed tries, 2 s apart (Spec04 §4.3); next_attempt_at follows the last one."""
+    e["attempts"], e["next"] = attempts, e["created"] + timedelta(seconds=2 * attempts)
+
+
 pending = [e for e in events if e["processed"] is None]
-pending[0]["attempts"], pending[0]["edge"] = 25, "PENDING with 25 failed attempts (poison / Redis down)"
-pending[1]["attempts"], pending[1]["edge"] = 3, "PENDING, retried 3 times"
+retried(pending[0], 4)
+pending[0]["failed"], pending[0]["next"] = pending[0]["next"], pending[0]["next"]
+pending[0]["error"] = "RedisConnectionFailureException: Unable to connect to redis:6379"
+pending[0]["edge"] = "FAILED after 1 try + 3 retries (Redis down)"
+retried(pending[1], 3)
+pending[1]["edge"] = "PENDING after 3 failed tries: last retry due"
+retried(pending[2], 1)
+# Far future so it stays "not due" whatever the real clock says
+pending[2]["next"] = ANCHOR + timedelta(days=3650)
+pending[2]["edge"] = "PENDING, next retry not due yet"
 old = [e for e in events if e["processed"] and ANCHOR - e["processed"] > timedelta(days=7)]
 old[0]["edge"] = "PROCESSED > 7 days ago: cleanup job must delete it"
 recent = [e for e in events if e["processed"] and ANCHOR - e["processed"] < timedelta(days=7)]
-recent[0]["attempts"], recent[0]["edge"] = 2, "PROCESSED after 2 failed attempts"
+retried(recent[0], 2)
+recent[0]["processed"] = recent[0]["next"] + timedelta(milliseconds=300)
+recent[0]["edge"] = "PROCESSED after 2 failed attempts"
 recent[1]["processed"], recent[1]["edge"] = recent[1]["created"], "processed_at == created_at"
 
 
@@ -939,7 +956,7 @@ write("12_appointments.sql", "appointments",
          a["status"], a["idem"], a["created"], a["updated"]), a["edge"]) for a in appointments])
 write("13_outbox_events.sql", "outbox_events",
       ["id", "aggregate_type", "aggregate_id", "event_type", "payload", "created_at",
-       "processed_at", "attempts"],
+       "processed_at", "attempts", "next_attempt_at", "failed_at", "last_error"],
       [((e["id"], e["agg_type"], e["agg_id"], e["type"],
          json.dumps(e["payload"], ensure_ascii=False), e["created"], e["processed"],
-         e["attempts"]), e["edge"]) for e in events])
+         e["attempts"], e["next"], e["failed"], e["error"]), e["edge"]) for e in events])

@@ -12,5 +12,6 @@ flowchart LR
     VEH["vehicles"] --> C10["FK (car_info_id, vehicle_type_id)<br/>→ car_info(id, vehicle_type_id)<br/>(type copy always matches the model)"]
     APPT --> I1["INDEX (dealership_id, start_time)"]
     SBVT["service_bay_vehicle_types"] --> I3["INDEX (vehicle_type_id)"]
-    OUT["outbox_events"] --> I2["PARTIAL INDEX (created_at)<br/>WHERE processed_at IS NULL"]
+    OUT["outbox_events"] --> I2["PARTIAL INDEX (next_attempt_at)<br/>WHERE processed_at IS NULL AND failed_at IS NULL"]
+    OUT --> C11["CHECK processed_at IS NULL OR failed_at IS NULL"]
     ALL["every table"] --> U1["id UUID DEFAULT uuidv7()"]

@@ -1,5 +1,7 @@
 stateDiagram-v2
     [*] --> PENDING: inserted in booking transaction
     PENDING --> PROCESSED: version key bumped
-    PENDING --> PENDING: Redis error, attempts + 1
+    PENDING --> PENDING: Redis error, attempts <= 3,<br/>next_attempt_at = now() + 2s
+    PENDING --> FAILED: 4th failure or invalid payload
     PROCESSED --> [*]: cleanup after 7 days
+    FAILED --> [*]: cleanup after 30 days

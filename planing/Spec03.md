@@ -220,7 +220,7 @@ python3 seeding/generate.py             # only after changing the generator
 
 ### 6.8 Outbox events
 - **Pending** events (13) and **processed** events (87).
-- Pending after **3 failed attempts**, and a **"poison" event with 25 attempts** (Redis down for a long time).
+- Pending after **3 failed tries** (last retry due), a pending event whose **next retry is not due yet**, and a **FAILED** event after 1 try + 3 retries with `last_error` (Spec04 §5; was "25 attempts" before V4).
 - Processed **after 2 retries**; processed with **zero delay** (`processed_at = created_at`).
 - Processed **more than 7 days ago** → the cleanup job must delete it.
 - **Two events with the same `created_at`** — their UUIDv7 ids share the same time prefix, so the relay must order by `created_at, id` and must not expect a strict time order from ids alone.

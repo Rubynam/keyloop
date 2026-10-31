@@ -25,7 +25,7 @@ docker compose up -d --build --wait
 curl localhost:8080/api/v1/ping
 curl localhost:8080/actuator/health
 curl localhost:8081/actuator/health
-docker compose logs -f scheduler-batch   # heartbeatJob every 30 s
+docker compose logs -f scheduler-batch   # heartbeatJob every 5 min
 ```
 
 ### Load balancer and API replicas

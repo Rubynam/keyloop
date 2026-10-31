@@ -110,12 +110,14 @@ Splitting them means a crash, a long-running job or a deploy of the worker never
 | BAT-02 | Spring Batch metadata tables (`BATCH_JOB_INSTANCE`, …) live in a **separate schema `batch`** to keep them away from domain tables; created by `spring.batch.jdbc.initialize-schema=always` + `spring.batch.jdbc.table-prefix=batch.BATCH_`. |
 | BAT-03 | Batch app **never runs Flyway** on the domain schema — it only reads/writes tables owned by the API. |
 | BAT-04 | Jobs must **not auto-run on startup** (`spring.batch.job.enabled=false`). They are launched by a scheduler (`@Scheduled` + `JobOperator`/`JobLauncher`) with a unique `JobParameter` (timestamp) per run. |
-| BAT-05 | Sample job `heartbeatJob`: one tasklet step that runs `SELECT 1` on Postgres and `PING` on Redis, then logs the result. Scheduled every 30 s (configurable). Proves DB + Redis + Batch wiring. |
+| BAT-05 | Sample job `heartbeatJob`: one tasklet step that runs `SELECT 1` on Postgres and `PING` on Redis, then logs the result. Scheduled every 5 min (configurable; was 30 s, changed by Spec04 CLN-04). Proves DB + Redis + Batch wiring. |
 | BAT-06 | Placeholders (empty classes + TODO, disabled by config) for future jobs: `outboxRelayJob`, `outboxCleanupJob`. |
 | BAT-07 | **Multi-instance safe**: when several batch containers run, a scheduled job must not run twice at the same time. Use **ShedLock** (JDBC lock provider) — or document the chosen alternative. |
 | BAT-08 | Actuator `health` includes `db` and `redis`. |
 
 > ⚠️ **Trade-off to remember:** Spring Batch is designed for chunked, restartable jobs. The future outbox relay is a **high-frequency poll** (D1: `FOR UPDATE SKIP LOCKED` + `LISTEN/NOTIFY`); wrapping each poll in a Batch job creates a metadata row per run. Decide in the outbox spec whether the relay is a Batch job or a plain scheduled worker inside the same app. Cleanup (daily) fits Batch naturally.
+>
+> → Answered in [Spec04 §2 Q1](Spec04.md#2-answers-to-spec01-9): plain scheduled worker for the relay, Batch for cleanup.
 
 ### 4.5 Dockerfiles
 
@@ -175,7 +177,7 @@ keyloop/
         ├── main/java/com/keyloop/scheduler/batch/
         │   ├── SchedulerBatchApplication.java
         │   ├── job/HeartbeatJobConfig.java
-        │   ├── job/OutboxRelayJobConfig.java     # placeholder
+        │   ├── job/OutboxRelayJobConfig.java     # placeholder (replaced by outbox/OutboxRelay, Spec04)
         │   ├── job/OutboxCleanupJobConfig.java   # placeholder
         │   └── schedule/JobScheduler.java
         ├── main/resources/application.yml
@@ -195,7 +197,7 @@ keyloop/
 | `REDIS_HOST` / `REDIS_PORT` | api, batch | `localhost` / `6379` (`redis` inside compose) |
 | `API_PORT` | api | `8080` |
 | `BATCH_PORT` | batch | `8081` |
-| `HEARTBEAT_CRON` | batch | `*/30 * * * * *` |
+| `HEARTBEAT_CRON` | batch | `0 */5 * * * *` (Spec04 CLN-04) |
 
 ---
 
@@ -218,7 +220,7 @@ keyloop/
 - [x] `curl localhost:8080/api/v1/ping` → `200 {"status":"ok"}`.
 - [x] `curl localhost:8080/actuator/health` → `UP` with `db` and `redis` components `UP`.
 - [x] `curl localhost:8081/actuator/health` → `UP` with `db` and `redis` `UP`.
-- [x] `docker compose logs scheduler-batch` shows `heartbeatJob` completing every ~30 s; rows appear in `batch.batch_job_execution`.
+- [x] `docker compose logs scheduler-batch` shows `heartbeatJob` completing every ~30 s (every 5 min since Spec04); rows appear in `batch.batch_job_execution`.
 - [x] `flyway_schema_history` contains `V1__baseline`; `outbox_events` exists.
 - [x] `docker compose stop scheduler-batch` → API keeps serving; `docker compose stop server-api` → running batch keeps working.
 - [x] `docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --scale scheduler-batch=2` → heartbeat still runs **once** per tick (ShedLock).
@@ -230,7 +232,9 @@ keyloop/
 
 ## 9. Open Questions
 
-- [ ] Outbox relay: Spring Batch job vs plain scheduled worker in `scheduler-batch` (see trade-off in §4.4).
-- [ ] Need a `scheduler-common` library module later for shared event payloads?
-- [ ] Batch metadata in the same database (separate schema) vs a dedicated database — same DB chosen for now for simplicity.
-- [ ] Testcontainers for integration tests — introduce here or in Phase 4 (Testing)?
+> All answered in [Spec04 §2](Spec04.md#2-answers-to-spec01-9).
+
+- [x] Outbox relay: Spring Batch job vs plain scheduled worker in `scheduler-batch` (see trade-off in §4.4). → [Spec04 Q1](Spec04.md#2-answers-to-spec01-9)
+- [x] Need a `scheduler-common` library module later for shared event payloads? → [Spec04 Q2](Spec04.md#2-answers-to-spec01-9)
+- [x] Batch metadata in the same database (separate schema) vs a dedicated database — same DB chosen for now for simplicity. → [Spec04 Q3](Spec04.md#2-answers-to-spec01-9)
+- [x] Testcontainers for integration tests — introduce here or in Phase 4 (Testing)? → [Spec04 Q4](Spec04.md#2-answers-to-spec01-9)

@@ -105,5 +105,8 @@ erDiagram
         jsonb payload "dealershipId, dates"
         timestamptz created_at
         timestamptz processed_at "nullable"
-        int attempts
+        int attempts "failed tries, max 4"
+        timestamptz next_attempt_at "retry schedule, 2 s apart"
+        timestamptz failed_at "nullable, terminal"
+        string last_error "nullable"
     }

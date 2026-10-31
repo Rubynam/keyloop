@@ -27,7 +27,7 @@ sequenceDiagram
             AVS->>RS: order(candidates)
             Note over RS: bays taking the fewest vehicle types first
             RS-->>BS: ordered (bay, technician) pairs
-            loop each pair, max N attempts
+            loop each pair, max 3 attempts, no wait between them
                 BS->>PG: BEGIN
                 BS->>PG: INSERT appointment (CONFIRMED, id = uuidv7())
                 alt exclusion violation (23P01) or FK violation (23503)
@@ -40,6 +40,6 @@ sequenceDiagram
                     BS-->>C: 201 Created
                 end
             end
-            BS-->>C: 409 Conflict (no resources available)
+            BS-->>C: 409 Conflict "Booking failed: no technician or service bay<br/>is available for the requested time. Please choose another slot."
         end
     end

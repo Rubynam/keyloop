@@ -3,9 +3,12 @@ package com.keyloop.scheduler.batch.job;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
 
-/** Placeholder: deletes processed outbox rows older than the retention window (ROADMAP D1). */
+/**
+ * Placeholder: daily Batch job (Spec04 CLN-01…03) that deletes PROCESSED and
+ * FAILED outbox rows past their retention, then prunes old Batch metadata.
+ */
 @Configuration
-@ConditionalOnProperty(name = "scheduler.jobs.outbox-cleanup.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "scheduler.outbox.cleanup.enabled", havingValue = "true")
 public class OutboxCleanupJobConfig {
-    // TODO(outbox spec): job definition + daily schedule
+    // TODO(cleanup spec): chunked delete steps + daily launch from JobScheduler
 }

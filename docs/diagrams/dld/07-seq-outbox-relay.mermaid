@@ -4,19 +4,25 @@ sequenceDiagram
     participant W as OutboxRelay
     participant R as Redis
 
-    PG-->>W: NOTIFY outbox (or polling tick)
-    loop while pending events exist
+    Note over W: @Scheduled(fixedDelay 500ms), no ShedLock (Spec04 §4.1)
+    loop while the last batch was full
         W->>PG: BEGIN
-        W->>PG: SELECT ... WHERE processed_at IS NULL ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED
+        W->>PG: SELECT ... WHERE processed_at IS NULL AND failed_at IS NULL<br/>AND next_attempt_at <= now()<br/>ORDER BY created_at, id LIMIT 100 FOR UPDATE SKIP LOCKED
         PG-->>W: batch
         loop each event
-            W->>W: extract (dealershipId, affected dates)
-            W->>R: INCR avail:ver:dealer:date + EXPIRE
-            alt Redis error
-                W->>PG: attempts = attempts + 1
-                Note over W: retry later with backoff
-            else ok
-                W->>PG: processed_at = now()
+            W->>W: dealershipId + union(dates, oldDates, newDates)
+            alt invalid payload
+                W->>PG: failed_at = now(), last_error (no retry)
+            else
+                W->>R: INCR avail:ver:dealer:date + EXPIRE 2d
+                alt Redis error, attempts + 1 <= 3
+                    W->>PG: attempts + 1, next_attempt_at = now() + 2s
+                else Redis error, 4th failure
+                    W->>PG: attempts + 1, failed_at = now(), last_error
+                    Note over W: ERROR log (English) for operators,<br/>booking unchanged
+                else ok
+                    W->>PG: processed_at = now()
+                end
             end
         end
         W->>PG: COMMIT
