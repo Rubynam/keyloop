@@ -42,8 +42,8 @@ class SchedulerBatchApplicationTest extends IntegrationTest {
     }
 
     @Test
-    void relayIsOffByDefaultWithTheDecidedRetryPolicy() {
-        assertThat(context.getBeanNamesForType(OutboxRelay.class)).isEmpty();
+    void relayIsOnByDefaultWithTheDecidedRetryPolicy() {
+        assertThat(context.getBeanNamesForType(OutboxRelay.class)).hasSize(1);
         assertThat(relayProperties.maxRetries()).isEqualTo(3);
         assertThat(relayProperties.retryDelay()).isEqualTo(Duration.ofSeconds(2));
     }

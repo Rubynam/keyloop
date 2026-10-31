@@ -25,7 +25,9 @@ import com.keyloop.scheduler.api.availability.AvailabilityResponse.Slot;
  *       {@code open}; a local time skipped by a DST gap is not a candidate, a local time
  *       repeated by a DST overlap is a candidate once per offset.</li>
  *   <li>Window {@code [start, start + duration)} must end at or before local {@code close}
- *       ({@code 1440} = end of day) and start at or after {@code now}.</li>
+ *       ({@code 1440} = end of day).</li>
+ *   <li>The "now" cut is not part of {@link #compute}: the full day is what the cache
+ *       stores, and {@link #notStartedBefore} drops past starts per request.</li>
  *   <li>A window is free when at least one bay AND at least one technician have no busy
  *       interval overlapping it ({@code a.start < b.end && b.start < a.end}). Bays and
  *       technicians are independent: the DB fit checks are per resource, not per pair.</li>
@@ -52,8 +54,7 @@ public final class SlotCalculator {
     public static List<Day> compute(LocalDate from, LocalDate to, ZoneId zone,
                                     int openMinute, int closeMinute, int durationMinutes,
                                     Collection<? extends Collection<Interval>> bays,
-                                    Collection<? extends Collection<Interval>> technicians,
-                                    Instant now) {
+                                    Collection<? extends Collection<Interval>> technicians) {
         ZoneRules rules = zone.getRules();
         Duration duration = Duration.ofMinutes(durationMinutes);
         List<Day> days = new ArrayList<>();
@@ -69,7 +70,7 @@ public final class SlotCalculator {
                     for (ZoneOffset offset : rules.getValidOffsets(local)) {
                         Instant start = local.toInstant(offset);
                         Instant end = start.plus(duration);
-                        if (end.isAfter(close) || start.isBefore(now)) {
+                        if (end.isAfter(close)) {
                             continue;
                         }
                         if (anyFree(bays, start, end) && anyFree(technicians, start, end)) {
@@ -83,6 +84,11 @@ public final class SlotCalculator {
             days.add(new Day(date, List.copyOf(slots)));
         }
         return List.copyOf(days);
+    }
+
+    /** Slots that start at or after {@code now}; a slot starting exactly at {@code now} is kept. */
+    public static List<Slot> notStartedBefore(List<Slot> slots, Instant now) {
+        return slots.stream().filter(s -> !s.start().toInstant().isBefore(now)).toList();
     }
 
     private static boolean anyFree(Collection<? extends Collection<Interval>> resources, Instant start, Instant end) {

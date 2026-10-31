@@ -25,9 +25,22 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      # Upper bound for one command: Redis down must not stall a read (fail-open, REL-05)
+      timeout: 1s
   mvc:
     problemdetails:
       enabled: true
+
+scheduler:
+  # spec-availability-ops, cache-read-path.md. Slot-list TTL stays far below the 2-day version-key TTL.
+  availability:
+    cache:
+      enabled: true
+      ttl: 30s
+      ttl-padding: 30s     # random 0..30s added to ttl, so keys built together do not expire together
+      lock-ttl: 2s         # rebuild lock (PX); expires by itself if its owner dies
+      lock-wait: 100ms     # a waiter then computes from PostgreSQL without writing the cache
+      poll-interval: 10ms
 
 management:
   endpoints:

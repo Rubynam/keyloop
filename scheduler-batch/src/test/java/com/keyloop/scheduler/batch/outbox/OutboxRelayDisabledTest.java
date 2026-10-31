@@ -8,15 +8,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.TestPropertySource;
 
-/** Turning the relay on registers its @Scheduled method with the configured poll delay. */
-@TestPropertySource(properties = "scheduler.outbox.relay.enabled=true")
-class OutboxRelayEnabledTest extends IntegrationTest {
+/** The relay is on by default (spec-availability-ops); the switch still turns it off. */
+@TestPropertySource(properties = "scheduler.outbox.relay.enabled=false")
+class OutboxRelayDisabledTest extends IntegrationTest {
 
     @Autowired
     private ApplicationContext context;
 
     @Test
-    void relayStartsWhenEnabled() {
-        assertThat(context.getBeanNamesForType(OutboxRelay.class)).hasSize(1);
+    void relayDoesNotLoadWhenDisabled() {
+        assertThat(context.getBeanNamesForType(OutboxRelay.class)).isEmpty();
     }
 }
