@@ -92,6 +92,19 @@ Test data with edge cases, UUIDv7 ids ([Spec03](planing/Spec03.md)). Needs the s
 seeding/seed.sh
 ```
 
+### Manual API testing (Postman)
+
+`GET /api/v1/availability?dealershipId=&serviceTypeId=&vehicleTypeId=&from=&to=` returns free slots per local date
+(`from`/`to` are ISO dates in the dealership's time zone, inclusive, at most 14 days).
+[`postman/`](postman/README.md) has a collection + environment with the seed ids and test scripts:
+
+```bash
+seeding/seed.sh
+npx newman run postman/keyloop-scheduler.postman_collection.json -e postman/local.postman_environment.json
+```
+
+Or import both files into Postman and run the collection with the *keyloop local* environment.
+
 ### Build and test
 
 ```bash

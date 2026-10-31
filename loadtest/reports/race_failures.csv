@@ -1,0 +1,4 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+POST,/api/v1/appointments [race-vehicle],"CatchResponseError('RC-03: status 404, expected [201, 409]')",10,2026-10-31T05:42:32Z,2026-10-31T05:42:32Z
+POST,/api/v1/appointments [race],"CatchResponseError('RC-01: status 404, expected [201, 409]')",10,2026-10-31T05:42:31Z,2026-10-31T05:42:31Z
+POST,/api/v1/appointments [race-idempotent],"CatchResponseError('RC-02: status 404, expected [201]')",10,2026-10-31T05:42:31Z,2026-10-31T05:42:31Z

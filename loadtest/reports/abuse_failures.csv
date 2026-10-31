@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,/api/v1/availability [abuse],"CatchResponseError('RL-01: status 404, expected [200, 429]')",201,2026-10-31T05:39:22Z,2026-10-31T05:39:26Z

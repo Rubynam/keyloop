@@ -1,0 +1,1038 @@
+{
+  "info": {
+    "name": "keyloop-scheduler",
+    "description": "Manual / newman checks for the Scheduler API against docker compose + seed data (spec-read-availability). See postman/README.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Rolling dates so the \"future\" requests keep working after the seed anchor day.",
+          "// Seed-pinned requests (back-to-back, kiosk, DST) use fixed dates instead.",
+          "const day = 24 * 60 * 60 * 1000;",
+          "const iso = (offsetDays) => new Date(Date.now() + offsetDays * day).toISOString().slice(0, 10);",
+          "pm.collectionVariables.set(\"futureDate\", iso(3));",
+          "pm.collectionVariables.set(\"futureDatePlus1\", iso(4));",
+          "pm.collectionVariables.set(\"futureDatePlus2\", iso(5));"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test(\"X-Request-Id echoed\", () => {",
+          "    pm.expect(pm.response.headers.get(\"X-Request-Id\")).to.be.a(\"string\").and.not.empty;",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "futureDate",
+      "value": ""
+    },
+    {
+      "key": "futureDatePlus1",
+      "value": ""
+    },
+    {
+      "key": "futureDatePlus2",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "Ping",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/ping",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ping"
+              ]
+            },
+            "description": "Smoke check: the API is up behind nginx."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 ok\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Availability",
+      "item": [
+        {
+          "name": "Availability - happy path (hub, oil change, gasoline car)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDatePlus1}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDatePlus1}}"
+                }
+              ]
+            },
+            "description": "Main hub (Asia/Ho_Chi_Minh, 08:00-17:00), OIL_CHANGE 60 min, GASOLINE_CAR. Rolling dates (today + 3/4 days)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"200 with the requested triple\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.dealershipId).to.eql(pm.environment.get(\"hubDealershipId\"));",
+                  "    pm.expect(body.serviceTypeId).to.eql(pm.environment.get(\"oilChangeServiceTypeId\"));",
+                  "    pm.expect(body.vehicleTypeId).to.eql(pm.environment.get(\"gasolineCarVehicleTypeId\"));",
+                  "    pm.expect(body.timezone).to.eql(\"Asia/Ho_Chi_Minh\");",
+                  "    pm.expect(body.durationMinutes).to.eql(60);",
+                  "});",
+                  "pm.test(\"every date in range is listed\", () => {",
+                  "    pm.expect(body.days.map(d => d.date)).to.eql([pm.collectionVariables.get(\"futureDate\"), pm.collectionVariables.get(\"futureDatePlus1\")]);",
+                  "});",
+                  "pm.test(\"slots: 15-min starts, +07:00, 60 min, inside 08:00-17:00\", () => {",
+                  "    const all = body.days.flatMap(d => d.slots);",
+                  "    pm.expect(all.length).to.be.above(0);",
+                  "    all.forEach(s => {",
+                  "        pm.expect(s.start).to.match(/T\\d{2}:(00|15|30|45):00\\+07:00$/);",
+                  "        pm.expect(s.end).to.match(/\\+07:00$/);",
+                  "        pm.expect(Date.parse(s.end) - Date.parse(s.start)).to.eql(60 * 60 * 1000);",
+                  "        const hhmm = s.start.slice(11, 16);",
+                  "        pm.expect(hhmm >= \"08:00\" && hhmm <= \"16:00\", hhmm).to.be.true;",
+                  "    });",
+                  "});",
+                  "pm.test(\"no bay or technician ids exposed\", () => {",
+                  "    pm.expect(pm.response.text()).to.not.match(/bay|technician/i);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Availability - back-to-back (Riverside, 2026-11-03)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{riversideDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-11-03&to=2026-11-03",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{riversideDealershipId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "2026-11-03"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-11-03"
+                }
+              ]
+            },
+            "description": "Seed-pinned: one fitting bay and one qualified technician, booked 08:00-09:00. Half-open windows make 09:00 free."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                  "const starts = body.days[0].slots.map(s => s.start);",
+                  "// Seed: the only bay + technician pair is busy 08:00-09:00 local on 2026-11-03",
+                  "if (Date.now() < Date.parse(\"2026-11-03T09:00:00+07:00\")) {",
+                  "    pm.test(\"09:00 offered right after the 08:00-09:00 job\", () => {",
+                  "        pm.expect(starts).to.include(\"2026-11-03T09:00:00+07:00\");",
+                  "    });",
+                  "} else {",
+                  "    pm.test.skip(\"09:00 offered right after the 08:00-09:00 job (date passed)\", () => {});",
+                  "}",
+                  "pm.test(\"08:00-08:45 not offered (overlap)\", () => {",
+                  "    [\"08:00\", \"08:15\", \"08:30\", \"08:45\"].forEach(t =>",
+                  "        pm.expect(starts).to.not.include(`2026-11-03T${t}:00+07:00`));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Availability - fully booked kiosk (2026-11-04)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{kioskDealershipId}}&serviceTypeId={{tyreRotationServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-11-04&to=2026-11-04",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{kioskDealershipId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{tyreRotationServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "2026-11-04"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-11-04"
+                }
+              ]
+            },
+            "description": "Express kiosk open 09:00-10:00; seed fills the hour (09:00-09:30, 09:30-09:55, 09:59-10:00), so a 30-min job never fits."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"200 with the date listed and no slots\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.timezone).to.eql(\"Asia/Singapore\");",
+                  "    pm.expect(body.days).to.have.lengthOf(1);",
+                  "    pm.expect(body.days[0].date).to.eql(\"2026-11-04\");",
+                  "    pm.expect(body.days[0].slots).to.be.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Availability - DST end (New York, 2026-10-31..11-02)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{newYorkDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-10-31&to=2026-11-02",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{newYorkDealershipId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "2026-10-31"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-11-02"
+                }
+              ]
+            },
+            "description": "US DST ends 2026-11-01 02:00. Business hours stay 07:00-19:00 local; the UTC offset in the slots changes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"200, America/New_York, three dates\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.timezone).to.eql(\"America/New_York\");",
+                  "    pm.expect(body.days.map(d => d.date)).to.eql([\"2026-10-31\", \"2026-11-01\", \"2026-11-02\"]);",
+                  "});",
+                  "pm.test(\"offset is -04:00 before DST ends, -05:00 after\", () => {",
+                  "    body.days[0].slots.forEach(s => pm.expect(s.start).to.match(/-04:00$/));",
+                  "    body.days[1].slots.forEach(s => pm.expect(s.start).to.match(/-05:00$/));",
+                  "    body.days[2].slots.forEach(s => pm.expect(s.start).to.match(/-05:00$/));",
+                  "});",
+                  "pm.test(\"starts follow the wall clock inside 07:00-19:00\", () => {",
+                  "    body.days.flatMap(d => d.slots).forEach(s => {",
+                  "        const hhmm = s.start.slice(11, 16);",
+                  "        pm.expect(hhmm >= \"07:00\" && hhmm <= \"18:00\", hhmm).to.be.true;",
+                  "        pm.expect(hhmm).to.match(/:(00|15|30|45)$/);",
+                  "    });",
+                  "});",
+                  "if (Date.now() < Date.parse(\"2026-11-02T07:00:00-05:00\")) {",
+                  "    pm.test(\"2026-11-02 opens at 07:00 local (-05:00)\", () => {",
+                  "        pm.expect(body.days[2].slots[0].start).to.eql(\"2026-11-02T07:00:00-05:00\");",
+                  "    });",
+                  "} else {",
+                  "    pm.test.skip(\"2026-11-02 opens at 07:00 local (date passed)\", () => {});",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Availability - open 24h (roadside hub)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{roadside24hDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{roadside24hDealershipId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}"
+                }
+              ]
+            },
+            "description": "close_time = 24:00: the last 60-min slot ends at midnight (next date)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const date = pm.collectionVariables.get(\"futureDate\");",
+                  "pm.test(\"200, UTC\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.timezone).to.eql(\"UTC\");",
+                  "});",
+                  "pm.test(\"first slot 00:00, last slot 23:00-24:00\", () => {",
+                  "    const slots = body.days[0].slots;",
+                  "    pm.expect(slots[0].start).to.eql(`${date}T00:00:00Z`);",
+                  "    const last = slots[slots.length - 1];",
+                  "    pm.expect(last.start).to.eql(`${date}T23:00:00Z`);",
+                  "    const next = new Date(Date.parse(date) + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);",
+                  "    pm.expect(last.end).to.eql(`${next}T00:00:00Z`);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Availability - vehicle type not serviceable (hydrogen)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{hydrogenCarVehicleTypeId}}&from={{futureDate}}&to={{futureDatePlus2}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{hydrogenCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDatePlus2}}"
+                }
+              ]
+            },
+            "description": "No bay or technician takes HYDROGEN_CAR: a read returns empty days, not an error."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"200 with every date empty\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.days).to.have.lengthOf(3);",
+                  "    body.days.forEach(d => pm.expect(d.slots).to.be.empty);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Errors",
+      "item": [
+        {
+          "name": "404 - unknown dealership",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{$guid}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{$guid}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}"
+                }
+              ]
+            },
+            "description": "Random dealershipId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(404);",
+                  "    pm.expect(body.detail).to.include(\"not found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 - unknown service type",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{$guid}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{$guid}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}"
+                }
+              ]
+            },
+            "description": "Random serviceTypeId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(404);",
+                  "    pm.expect(body.detail).to.include(\"not found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 - unknown vehicle type",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{$guid}}&from={{futureDate}}&to={{futureDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{$guid}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}"
+                }
+              ]
+            },
+            "description": "Random vehicleTypeId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(404);",
+                  "    pm.expect(body.detail).to.include(\"not found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - to before from",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-11-05&to=2026-11-04",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "2026-11-05"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-11-04"
+                }
+              ]
+            },
+            "description": "`to` is before `from`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.title).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - range of 15 days",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-11-02&to=2026-11-16",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "2026-11-02"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-11-16"
+                }
+              ]
+            },
+            "description": "Max 14 dates inclusive; 2026-11-02..2026-11-16 is 15."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.title).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "pm.test(\"detail names the 14-day limit\", () => pm.expect(pm.response.json().detail).to.include(\"14\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - missing vehicleTypeId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&from={{futureDate}}&to={{futureDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}"
+                }
+              ]
+            },
+            "description": "Required param absent."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.title).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "pm.test(\"detail names the missing param\", () => pm.expect(pm.response.json().detail).to.include(\"vehicleTypeId\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - malformed from",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=abc&to={{futureDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "abc"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}"
+                }
+              ]
+            },
+            "description": "`from=abc` is not an ISO local date."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.title).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - malformed dealershipId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId=not-a-uuid&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "not-a-uuid"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}"
+                }
+              ]
+            },
+            "description": "Not a UUID."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.title).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
