@@ -1,15 +1,19 @@
 flowchart TB
+    CLIENT(["client"]) -->|":8080"| NGX
     subgraph DC["docker-compose"]
-        API["scheduler-api<br/>:8080"]
-        RELAY["outbox-relay<br/>(same image, worker profile)"]
-        PG[("postgres:16<br/>+ btree_gist<br/>:5432")]
-        RD[("redis:7<br/>:6379")]
-        JAE["jaeger :16686<br/>(OTLP :4317 / :4318)"]
+        NGX["nginx:1.30-alpine<br/>load balancer, least_conn<br/>networks: edge, lb-net"]
+        API["server-api × N (default 2)<br/>image keyloop/server-api<br/>no host port<br/>networks: lb-net, data-net"]
+        BATCH["scheduler-batch<br/>image keyloop/scheduler-batch<br/>Spring Batch + ShedLock<br/>actuator :8081"]
+        PG[("postgres:18-alpine<br/>+ btree_gist<br/>schemas: public, batch<br/>:5432")]
+        RD[("redis:8-alpine<br/>cache only, allkeys-lru<br/>:6379")]
+        JAE["jaeger :16686<br/>(OTLP :4317 / :4318)<br/>later phase"]
     end
-    MIG["DB migrations<br/>(run on API startup)"] --> PG
+    MIG["Flyway migrations<br/>(run on server-api startup)"] --> PG
+    NGX -->|"lb-net (internal)<br/>Docker DNS, resolve every 5 s"| API
     API --> PG
     API --> RD
-    RELAY --> PG
-    RELAY --> RD
+    BATCH -->|"outbox_events, batch.*, batch.shedlock"| PG
+    BATCH --> RD
+    BATCH -.->|"depends_on: healthy"| API
     API -.->|"OTLP traces"| JAE
-    RELAY -.->|"OTLP traces"| JAE
+    BATCH -.->|"OTLP traces"| JAE

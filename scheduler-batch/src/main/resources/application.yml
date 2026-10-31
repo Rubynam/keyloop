@@ -1,0 +1,48 @@
+server:
+  port: ${BATCH_PORT:8081}
+
+spring:
+  application:
+    name: scheduler-batch
+  datasource:
+    # "batch" first: Batch metadata + ShedLock tables are created there;
+    # "public" second: domain tables (owned by server-api) stay reachable unqualified
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${POSTGRES_DB:scheduler}?currentSchema=batch,public
+    username: ${POSTGRES_USER:scheduler}
+    password: ${POSTGRES_PASSWORD:scheduler}
+  sql:
+    init:
+      mode: always   # schema.sql → ShedLock table
+  batch:
+    job:
+      enabled: false # launched by JobScheduler, never at startup
+    jdbc:
+      initialize-schema: always
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+scheduler:
+  jobs:
+    heartbeat:
+      enabled: true
+      cron: ${HEARTBEAT_CRON:*/30 * * * * *}
+    outbox-relay:
+      enabled: false
+    outbox-cleanup:
+      enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db,redis

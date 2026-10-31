@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Shared by every app. Files land in $LOG_PATH: <repo root>/logs for bootRun and docker compose. -->
+<Configuration status="WARN">
+    <Properties>
+        <Property name="LOG_DIR">${env:LOG_PATH:-logs}</Property>
+        <!-- One file per app and host: server-api replicas never write the same file -->
+        <Property name="LOG_NAME">${spring:spring.application.name:-app}-${hostName}</Property>
+        <Property name="PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{correlationId}] [%t] %c{1.} : %m%n%ex</Property>
+    </Properties>
+
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${PATTERN}"/>
+        </Console>
+        <RollingFile name="File"
+                     fileName="${LOG_DIR}/${LOG_NAME}.log"
+                     filePattern="${LOG_DIR}/archive/${LOG_NAME}-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${PATTERN}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy/>
+                <SizeBasedTriggeringPolicy size="20 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="14"/>
+        </RollingFile>
+    </Appenders>
+
+    <Loggers>
+        <Root level="INFO">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="File"/>
+        </Root>
+    </Loggers>
+</Configuration>

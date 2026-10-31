@@ -1,0 +1,44 @@
+server:
+  port: ${API_PORT:8080}
+  # Behind nginx: take client IP/scheme from X-Forwarded-* (Spec02 API-13)
+  forward-headers-strategy: framework
+  # Finish in-flight requests on scale-down / stop (Spec02 API-15)
+  shutdown: graceful
+
+spring:
+  application:
+    name: server-api
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${POSTGRES_DB:scheduler}
+    username: ${POSTGRES_USER:scheduler}
+    password: ${POSTGRES_PASSWORD:scheduler}
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Flyway owns the schema, Hibernate only checks it
+      ddl-auto: validate
+  flyway:
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  mvc:
+    problemdetails:
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db,redis

@@ -1,0 +1,11 @@
+# Needs KEDA 2.x in the cluster and a Secret "server-api-db" with
+# POSTGRES_USER / POSTGRES_PASSWORD. Apply with: kubectl apply -k infra/k8s/server-api
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml
+  - scaledobject.yaml
+images:
+  - name: keyloop/server-api
+    newTag: local

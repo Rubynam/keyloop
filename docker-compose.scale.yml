@@ -1,0 +1,7 @@
+# Override for running several scheduler-batch instances (ShedLock test):
+#   docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --scale scheduler-batch=2
+# Replicas cannot share one host port, so the batch actuator is not published;
+# health is still checked inside each container.
+services:
+  scheduler-batch:
+    ports: !reset []

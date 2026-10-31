@@ -3,6 +3,7 @@
 
 # Log file
 *.log
+logs/
 
 # BlueJ files
 *.ctxt
@@ -32,3 +33,6 @@ build/
 
 # Local secrets
 .env
+
+# IDE (IntelliJ): per-developer settings and data sources
+.idea/
