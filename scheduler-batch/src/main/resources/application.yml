@@ -36,7 +36,7 @@ scheduler:
   # Spec04 §7. Not under "jobs": the relay is a plain worker, not a Batch job.
   outbox:
     relay:
-      enabled: false
+      enabled: true       # spec-availability-ops
       poll-delay: 500ms
       batch-size: 100
       max-retries: 3      # after the first try; then the event is FAILED
