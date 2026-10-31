@@ -1,0 +1,61 @@
+# Load tests with Locust (Spec04). Overlay on the main compose file so Locust joins the
+# `edge` network and hits nginx exactly like a real client:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.loadtest.yml run --rm locust            # smoke
+#   LOADTEST_PROFILE=load docker compose -f docker-compose.yml -f docker-compose.loadtest.yml run --rm locust
+#
+#   # Web UI + 4 workers (profiles load / stress / spike only):
+#   LOADTEST_PROFILE=load docker compose -f docker-compose.yml -f docker-compose.loadtest.yml \
+#     up -d --scale locust-worker=4 locust-master locust-worker        # → http://localhost:8089
+#
+# Reports land in ./loadtest/reports (git-ignored).
+
+x-locust: &locust
+  build:
+    context: ./loadtest
+  image: keyloop/loadtest:local
+  environment: &locust-env
+    LOADTEST_PROFILE: ${LOADTEST_PROFILE:-smoke}
+    LOCUST_HOST: ${LOCUST_HOST:-http://nginx}
+  volumes:
+    # Scenarios, thresholds and code are mounted: edit and re-run without a rebuild
+    - ./loadtest:/loadtest
+  # Only on `edge`: Locust reaches nginx, never server-api / postgres / redis directly
+  networks: [edge]
+  depends_on:
+    nginx:
+      condition: service_healthy
+  profiles: [loadtest]
+
+services:
+  # One-shot headless run → exit code 0 = every budget met (Spec04 §6)
+  locust:
+    <<: *locust
+    environment:
+      <<: *locust-env
+      LOCUST_USERS: ${LOCUST_USERS:-1}
+      LOCUST_SPAWN_RATE: ${LOCUST_SPAWN_RATE:-1}
+      LOCUST_RUN_TIME: ${LOCUST_RUN_TIME:-1m}
+      LOCUST_HEADLESS: "true"
+    command: >-
+      --html /loadtest/reports/${LOADTEST_PROFILE:-smoke}.html
+      --csv /loadtest/reports/${LOADTEST_PROFILE:-smoke}
+
+  # Distributed mode with the web UI (not for 'race' / 'abuse': their verdict needs one process)
+  locust-master:
+    <<: *locust
+    environment:
+      <<: *locust-env
+      LOCUST_ONLY_SUMMARY: "false"
+    command: --master --class-picker --html /loadtest/reports/${LOADTEST_PROFILE:-load}-ui.html
+    ports:
+      - "${LOCUST_UI_PORT:-8089}:8089"
+
+  locust-worker:
+    <<: *locust
+    environment:
+      <<: *locust-env
+    command: --worker --master-host locust-master
+    depends_on:
+      locust-master:
+        condition: service_started

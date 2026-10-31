@@ -1,0 +1,100 @@
+{
+  "suite": "30-booking",
+  "inputFile": "input/30-booking.json",
+  "_doc": "Expected output per case id of the input file. A response that differs is a Locust failure (Spec04 §5).",
+  "cases": [
+    {
+      "id": "BK-01",
+      "goal": "Normal booking at the hub: a random standard car, oil change, random 15-min slot 2–120 days ahead. Expected 201 with the assigned bay + technician, or 409 when that slot is already taken (by load or by the same vehicle).",
+      "expect": {
+        "status": [201, 409],
+        "onStatus": {
+          "201": {
+            "headers": {"Location": {"matches": "/api/v1/appointments/[0-9a-f-]{36}$"}},
+            "body": [
+              {
+                "path": "id",
+                "matches": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+              },
+              {"path": "status", "equals": "CONFIRMED"},
+              {"path": "startTime", "equals": "{{start}}"},
+              {"path": "endTime", "matches": "Z$"},
+              {"path": "vehicleId", "equals": "{{v.vehicleId}}"},
+              {"path": "serviceBayId", "type": "string"},
+              {"path": "technicianId", "type": "string"}
+            ]
+          },
+          "409": {
+            "headers": {"Content-Type": {"matches": "^application/problem\\+json"}},
+            "body": [{"path": "status", "equals": 409}, {"path": "traceId", "exists": true}]
+          }
+        }
+      }
+    },
+    {
+      "id": "BK-02",
+      "goal": "Idempotent retry: the client times out and sends the SAME request with the SAME Idempotency-Key → the same appointment comes back (201, same id), no second row.",
+      "steps": [
+        {"id": "first", "expect": {"status": 201, "body": [{"path": "status", "equals": "CONFIRMED"}]}},
+        {"id": "replay", "expect": {"status": 201, "body": [{"path": "id", "equals": "{{first}}"}]}}
+      ]
+    },
+    {
+      "id": "BK-03",
+      "goal": "Same vehicle, same time, NEW key → 409: one car cannot be in two bays at once (DB-03), even though the hub has free bays and technicians.",
+      "steps": [
+        {"id": "first", "expect": {"status": 201}},
+        {"id": "overlap", "expect": {"status": 409, "body": [{"path": "status", "equals": 409}]}}
+      ]
+    },
+    {
+      "id": "BK-04",
+      "goal": "Start in the past → 400 (validator, no DB write).",
+      "expect": {
+        "status": 400,
+        "headers": {"Content-Type": {"matches": "^application/problem\\+json"}},
+        "body": [{"path": "status", "equals": 400}]
+      }
+    },
+    {
+      "id": "BK-05",
+      "goal": "Outside opening hours: 20:00 local at the hub (open 08:00–17:00) → 400.",
+      "expect": {"status": 400, "body": [{"path": "status", "equals": 400}]}
+    },
+    {
+      "id": "BK-06",
+      "goal": "Starts inside the hours but ENDS after closing: 16:30 + 60 min at the hub (closes 17:00) → 400. The whole window must fit.",
+      "expect": {"status": 400, "body": [{"path": "status", "equals": 400}]}
+    },
+    {
+      "id": "BK-07",
+      "goal": "Vehicle not owned by the customer (customer with no vehicle + someone else's hybrid) → 400.",
+      "expect": {"status": 400, "body": [{"path": "status", "equals": 400}]}
+    },
+    {
+      "id": "BK-08",
+      "goal": "Missing startTime / empty body fields → 400 from bean validation, never a 500 NullPointerException.",
+      "expect": {"status": 400, "body": [{"path": "status", "equals": 400}]}
+    },
+    {
+      "id": "BK-09",
+      "goal": "Unknown dealership → 404.",
+      "expect": {"status": 404, "body": [{"path": "status", "equals": 404}]}
+    },
+    {
+      "id": "BK-10",
+      "goal": "Hydrogen car at the hub → 422: no bay or technician there takes the vehicle type, at ANY time (different from 409 'busy now').",
+      "expect": {"status": 422, "body": [{"path": "status", "equals": 422}]}
+    },
+    {
+      "id": "BK-11",
+      "goal": "Electric truck at the hub → 422: a technician is certified for it, but the hub has no heavy high-voltage bay. Both resources are needed.",
+      "expect": {"status": 422, "body": [{"path": "status", "equals": 422}]}
+    },
+    {
+      "id": "BK-12",
+      "goal": "Service that no technician anywhere can do (hydrogen fuel-cell service, gasoline car) → 422, not an endless 409.",
+      "expect": {"status": 422, "body": [{"path": "status", "equals": 422}]}
+    }
+  ]
+}

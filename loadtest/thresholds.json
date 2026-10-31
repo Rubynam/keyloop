@@ -1,0 +1,50 @@
+{
+  "_doc": "Spec04 §6. Budgets per request name (the 'name' of a scenario request). A profile's block replaces 'default'. p50/p95/p99 in ms; maxFailRatio = share of responses that did not match the expected output.",
+  "default": {
+    "global": { "maxFailRatio": 0.01, "max5xx": 0 },
+    "endpoints": {}
+  },
+  "profiles": {
+    "smoke": {
+      "global": { "maxFailRatio": 0, "max5xx": 0 },
+      "endpoints": {
+        "/api/v1/ping":       { "p95": 100, "maxFailRatio": 0 },
+        "/actuator/health":   { "p95": 300, "maxFailRatio": 0 }
+      }
+    },
+    "load": {
+      "global": { "maxFailRatio": 0.01, "max5xx": 0 },
+      "endpoints": {
+        "/api/v1/availability [hot]":            { "p50": 30,  "p95": 150, "p99": 400,  "minRequests": 500, "maxFailRatio": 0.001 },
+        "/api/v1/availability [cold]":           { "p95": 600, "p99": 1500, "maxFailRatio": 0.01 },
+        "/api/v1/availability [invalid]":        { "p95": 100 },
+        "/api/v1/dealerships":            { "p95": 150 },
+        "/api/v1/service-types":          { "p95": 150 },
+        "/api/v1/appointments":                 { "p95": 400, "p99": 1000, "minRequests": 100, "maxFailRatio": 0.01 },
+        "/api/v1/appointments/{id}":             { "p95": 150 },
+        "/api/v1/appointments/{id}/cancel":    { "p95": 400 },
+        "/api/v1/appointments/{id}/reschedule":{ "p95": 500 }
+      }
+    },
+    "stress": {
+      "_note": "Find the knee, do not gate on latency: only 'no 5xx, mostly expected outputs'. Read the p95 curve in reports/stress.html.",
+      "global": { "maxFailRatio": 0.05, "max5xx": 0 },
+      "endpoints": {}
+    },
+    "spike": {
+      "global": { "maxFailRatio": 0.02, "max5xx": 0 },
+      "endpoints": {
+        "/api/v1/availability [hot]": { "p99": 1500 },
+        "/api/v1/appointments":      { "p99": 2000 }
+      }
+    },
+    "abuse": {
+      "global": { "maxFailRatio": 0, "max5xx": 0 },
+      "endpoints": { "/api/v1/availability [abuse]": { "p95": 200, "minRequests": 200 } }
+    },
+    "race": {
+      "global": { "maxFailRatio": 0, "max5xx": 0 },
+      "endpoints": {}
+    }
+  }
+}

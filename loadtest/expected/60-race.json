@@ -1,0 +1,25 @@
+{
+  "suite": "60-race",
+  "inputFile": "input/60-race.json",
+  "_doc": "Expected output per case id of the input file. A response that differs is a Locust failure (Spec04 §5).",
+  "cases": [
+    {
+      "id": "RC-01",
+      "goal": "Capacity 1: London Park Royal has ONE oil-change technician (Yuki). 10 different cars want 10:00 London time → exactly 1 x 201, 9 x 409. Two 201s = the exclusion constraint or the retry loop is broken.",
+      "expect": {"status": [201, 409]},
+      "aggregate": {"allowed": [201, 409], "exactly": {"201": 1, "409": 9}}
+    },
+    {
+      "id": "RC-02",
+      "goal": "Idempotency race: the SAME request with the SAME Idempotency-Key from 10 users at once (a client retrying in parallel) → 10 x 201 and ONE appointment id. A unique-key violation must be turned into 'return the existing one', not 409/500.",
+      "expect": {"status": 201},
+      "aggregate": {"allowed": [201], "exactly": {"201": 10}, "sameValue": "id"}
+    },
+    {
+      "id": "RC-03",
+      "goal": "One car, many keys: the same vehicle booked 10 times at once with DIFFERENT keys at the hub, which has 6 free oil-change technicians and 8 bays → still exactly 1 x 201: the vehicle itself is a resource (DB-03).",
+      "expect": {"status": [201, 409]},
+      "aggregate": {"allowed": [201, 409], "exactly": {"201": 1, "409": 9}}
+    }
+  ]
+}

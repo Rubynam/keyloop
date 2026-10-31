@@ -1,0 +1,68 @@
+{
+  "suite": "10-catalogue",
+  "inputFile": "input/10-catalogue.json",
+  "_doc": "Expected output per case id of the input file. A response that differs is a Locust failure (Spec04 §5).",
+  "cases": [
+    {
+      "id": "CT-01",
+      "goal": "Dealership list returns the seeded branches with their time zone and opening hours (the client needs them to show local times).",
+      "expect": {
+        "status": 200,
+        "body": [
+          {
+            "path": "",
+            "type": "array",
+            "minItems": 1,
+            "each": [
+              {"path": "id", "matches": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-"},
+              {"path": "timezone", "type": "string"},
+              {"path": "openTime", "matches": "^\\d{2}:\\d{2}"},
+              {"path": "closeTime", "matches": "^\\d{2}:\\d{2}"}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "CT-02",
+      "goal": "Service types carry their duration: the client computes nothing, but shows how long the job takes.",
+      "expect": {
+        "status": 200,
+        "body": [
+          {
+            "path": "",
+            "type": "array",
+            "minItems": 1,
+            "each": [{"path": "code", "type": "string"}, {"path": "durationMinutes", "type": "integer"}]
+          }
+        ]
+      }
+    },
+    {
+      "id": "CT-03",
+      "goal": "All 8 vehicle types from the lookup table are listed — including the unused MOTORBIKE (types are data, D2).",
+      "expect": {"status": 200, "body": [{"path": "", "type": "array", "minItems": 8, "maxItems": 8}]}
+    },
+    {
+      "id": "CT-04",
+      "goal": "Look up a vehicle by VIN: the response gives the vehicle type derived from its model, which the client then passes to /availability.",
+      "expect": {
+        "status": 200,
+        "body": [
+          {"path": "id", "equals": "{{ref.vehicles.HYBRID.vehicleId}}"},
+          {"path": "customerId", "equals": "{{ref.vehicles.HYBRID.customerId}}"},
+          {"path": "vehicleTypeId", "equals": "{{ref.vehicleTypes.HYBRID_CAR}}"}
+        ]
+      }
+    },
+    {
+      "id": "CT-05",
+      "goal": "Unknown VIN is a 404 ProblemDetail (not 500, not an empty 200).",
+      "expect": {
+        "status": 404,
+        "headers": {"Content-Type": {"matches": "^application/problem\\+json"}},
+        "body": [{"path": "status", "equals": 404}]
+      }
+    }
+  ]
+}

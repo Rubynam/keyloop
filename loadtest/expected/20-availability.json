@@ -1,0 +1,90 @@
+{
+  "suite": "20-availability",
+  "inputFile": "input/20-availability.json",
+  "_doc": "Expected output per case id of the input file. A response that differs is a Locust failure (Spec04 §5).",
+  "cases": [
+    {
+      "id": "AV-01",
+      "goal": "HOT read: many customers ask the same popular question (main hub, oil change, gasoline car, next 7 days). After the first miss every answer is a cache hit → p95 budget 'GET /availability [hot]' in thresholds.json.",
+      "expect": {
+        "status": 200,
+        "headers": {"Content-Type": {"matches": "^application/json"}},
+        "body": [
+          {
+            "path": "slots",
+            "type": "array",
+            "minItems": 1,
+            "each": [
+              {"path": "start", "matches": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:(00|15|30|45):00Z$"},
+              {"path": "end", "matches": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:00Z$"}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "AV-02",
+      "goal": "COLD read: a random date 1–60 days ahead (brake service, diesel car) at the hub → mostly cache misses, computed from PostgreSQL. Tests the miss path and stampede protection, budget 'GET /availability [cold]'.",
+      "expect": {"status": 200, "body": [{"path": "slots", "type": "array"}]}
+    },
+    {
+      "id": "AV-03",
+      "goal": "UTC+14 (Kiritimati): 'from/to' are LOCAL dates. Opening 08:00 local is 18:00Z of the PREVIOUS UTC day; one oil-change technician, 08:00–16:00, 60 min, 15-min step → exactly 29 slots, first at local 08:00, last at local 15:00.",
+      "expect": {
+        "status": 200,
+        "body": [
+          {"path": "slots", "minItems": 29, "maxItems": 29},
+          {"path": "slots.0.start", "equals": "{{first}}"},
+          {"path": "slots.28.start", "equals": "{{last}}"}
+        ]
+      }
+    },
+    {
+      "id": "AV-04",
+      "goal": "The whole window must fit the opening hours: Express Kiosk is open 09:00–10:00, wheel alignment takes 25 min → only 09:00, 09:15, 09:30. 09:45 would end at 10:10 and must NOT be offered.",
+      "expect": {
+        "status": 200,
+        "body": [
+          {"path": "slots", "minItems": 3, "maxItems": 3},
+          {"path": "slots.0.start", "equals": "{{first}}"},
+          {"path": "slots.2.start", "equals": "{{last}}"}
+        ]
+      }
+    },
+    {
+      "id": "AV-05",
+      "goal": "Never bookable → 200 with an EMPTY list, not an error: hydrogen car (no bay or technician takes it, D2).",
+      "expect": {"status": 200, "body": [{"path": "slots", "maxItems": 0}]}
+    },
+    {
+      "id": "AV-06",
+      "goal": "Never bookable → empty list: a dealership with technicians but NO bays (needs both resources at once).",
+      "expect": {"status": 200, "body": [{"path": "slots", "maxItems": 0}]}
+    },
+    {
+      "id": "AV-07",
+      "goal": "Range guard: 15 days (> 14) is rejected with 400 BEFORE any DB work — a spammer cannot ask for a year at once.",
+      "expect": {
+        "status": 400,
+        "headers": {"Content-Type": {"matches": "^application/problem\\+json"}},
+        "body": [{"path": "status", "equals": 400}, {"path": "detail", "type": "string"}],
+        "maxLatencyMs": 200
+      }
+    },
+    {
+      "id": "AV-08",
+      "goal": "'to' before 'from' → 400.",
+      "expect": {"status": 400, "body": [{"path": "status", "equals": 400}]}
+    },
+    {
+      "id": "AV-09",
+      "goal": "Missing vehicleTypeId and a malformed dealership id → 400 (not 500 from a failed UUID parse).",
+      "expect": {"status": 400, "body": [{"path": "status", "equals": 400}]}
+    },
+    {
+      "id": "AV-10",
+      "goal": "Unknown dealership (valid UUID, no row) → 404, and it is not cached as an empty slot list.",
+      "expect": {"status": 404, "body": [{"path": "status", "equals": 404}]}
+    }
+  ]
+}

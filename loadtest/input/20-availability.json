@@ -1,0 +1,209 @@
+{
+  "suite": "20-availability",
+  "goal": "The read path under heavy, repetitive traffic (ROADMAP D1). Hot queries must come from the Redis cache and stay fast; cold queries must still be correct; impossible combinations must answer 'no slot' instead of failing; bad input is rejected before it costs a DB query.",
+  "precondition": "seeding/seed.sh. Assumes slot step = 15 min (Spec04 A-3) and that no booking load targets KIRITIMATI / EXPRESS_KIOSK.",
+  "expectedFile": "expected/20-availability.json",
+  "_doc": "Input requests. Locust loads this file, binds {{tokens}}, sends each request, then checks it against expectedFile.",
+  "cases": [
+    {
+      "id": "AV-01",
+      "goal": "HOT read: many customers ask the same popular question (main hub, oil change, gasoline car, next 7 days). After the first miss every answer is a cache hit → p95 budget 'GET /availability [hot]' in thresholds.json.",
+      "verifies": ["D1 cache-aside", "NFR-01"],
+      "weight": 40,
+      "bind": {
+        "from": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 1}},
+        "to": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 7}}
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [hot]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{from}}",
+          "to": "{{to}}"
+        }
+      }
+    },
+    {
+      "id": "AV-02",
+      "goal": "COLD read: a random date 1–60 days ahead (brake service, diesel car) at the hub → mostly cache misses, computed from PostgreSQL. Tests the miss path and stampede protection, budget 'GET /availability [cold]'.",
+      "verifies": ["D1 cache miss", "NFR-02"],
+      "weight": 10,
+      "bind": {"day": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": [1, 60]}}},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [cold]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.BRAKE_SERVICE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.DIESEL_CAR}}",
+          "from": "{{day}}",
+          "to": "{{day}}"
+        }
+      }
+    },
+    {
+      "id": "AV-03",
+      "goal": "UTC+14 (Kiritimati): 'from/to' are LOCAL dates. Opening 08:00 local is 18:00Z of the PREVIOUS UTC day; one oil-change technician, 08:00–16:00, 60 min, 15-min step → exactly 29 slots, first at local 08:00, last at local 15:00.",
+      "verifies": ["Spec03 §6.1 time zones", "DLD §8"],
+      "weight": 2,
+      "bind": {
+        "day": {"date": {"tz": "Pacific/Kiritimati", "days": 120}},
+        "first": {"at": {"tz": "Pacific/Kiritimati", "days": 120, "time": "08:00"}},
+        "last": {"at": {"tz": "Pacific/Kiritimati", "days": 120, "time": "15:00"}}
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [edge]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.KIRITIMATI}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{day}}",
+          "to": "{{day}}"
+        }
+      }
+    },
+    {
+      "id": "AV-04",
+      "goal": "The whole window must fit the opening hours: Express Kiosk is open 09:00–10:00, wheel alignment takes 25 min → only 09:00, 09:15, 09:30. 09:45 would end at 10:10 and must NOT be offered.",
+      "verifies": ["DLD §8 'window inside business hours'", "Spec03 §6.2 25-min service"],
+      "weight": 2,
+      "bind": {
+        "day": {"date": {"tz": "Asia/Singapore", "days": 120}},
+        "first": {"at": {"tz": "Asia/Singapore", "days": 120, "time": "09:00"}},
+        "last": {"at": {"tz": "Asia/Singapore", "days": 120, "time": "09:30"}}
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [edge]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.EXPRESS_KIOSK}}",
+          "serviceTypeId": "{{ref.serviceTypes.WHEEL_ALIGNMENT}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{day}}",
+          "to": "{{day}}"
+        }
+      }
+    },
+    {
+      "id": "AV-05",
+      "goal": "Never bookable → 200 with an EMPTY list, not an error: hydrogen car (no bay or technician takes it, D2).",
+      "verifies": ["Spec03 §6.5", "ROADMAP D2"],
+      "weight": 2,
+      "bind": {"day": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 3}}},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [empty]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.HYDROGEN_CAR}}",
+          "from": "{{day}}",
+          "to": "{{day}}"
+        }
+      }
+    },
+    {
+      "id": "AV-06",
+      "goal": "Never bookable → empty list: a dealership with technicians but NO bays (needs both resources at once).",
+      "verifies": ["ROADMAP §1.3 two resources"],
+      "bind": {"day": {"date": {"tz": "Asia/Tokyo", "days": 3}}},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [empty]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.STAFF_ONLY}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{day}}",
+          "to": "{{day}}"
+        }
+      }
+    },
+    {
+      "id": "AV-07",
+      "goal": "Range guard: 15 days (> 14) is rejected with 400 BEFORE any DB work — a spammer cannot ask for a year at once.",
+      "verifies": ["D1 'bound query range'"],
+      "bind": {
+        "from": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 1}},
+        "to": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 15}}
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [invalid]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{from}}",
+          "to": "{{to}}"
+        }
+      }
+    },
+    {
+      "id": "AV-08",
+      "goal": "'to' before 'from' → 400.",
+      "verifies": ["DLD §11 validation"],
+      "bind": {
+        "from": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 5}},
+        "to": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 2}}
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [invalid]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{from}}",
+          "to": "{{to}}"
+        }
+      }
+    },
+    {
+      "id": "AV-09",
+      "goal": "Missing vehicleTypeId and a malformed dealership id → 400 (not 500 from a failed UUID parse).",
+      "verifies": ["DLD §11 validation"],
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [invalid]",
+        "query": {
+          "dealershipId": "not-a-uuid",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "from": "2030-01-01",
+          "to": "2030-01-02"
+        }
+      }
+    },
+    {
+      "id": "AV-10",
+      "goal": "Unknown dealership (valid UUID, no row) → 404, and it is not cached as an empty slot list.",
+      "verifies": ["DLD §11"],
+      "bind": {"day": {"date": {"tz": "UTC", "days": 3}}},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [not-found]",
+        "query": {
+          "dealershipId": "00000000-0000-7000-8000-000000000000",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{day}}",
+          "to": "{{day}}"
+        }
+      }
+    }
+  ]
+}
