@@ -9,24 +9,63 @@ Keyloop technical assessment, Scenario A. Design notes: [ROADMAP.md](ROADMAP.md)
 | `nginx` | Load balancer, single entry point; discovers `server-api` replicas via Docker DNS ([Spec02](planing/Spec02.md)) | 8080 |
 | `server-api` | REST API, owns the DB schema (Flyway), talks to PostgreSQL + Redis. 2 replicas by default, reached only through nginx | — |
 | `scheduler-batch` | Spring Batch worker jobs, scheduled with ShedLock (one run per tick across replicas) | 8081 (actuator) |
+| `common-logging` | Shared library: Log4j2 config, correlation id, method-logging aspect. Not a runnable app | — |
 
 Stack: Java 25 · Spring Boot 4.1 · Gradle 9 (wrapper) · PostgreSQL 18 · Redis 8.
 
-## Getting started
+## Setup
 
-Requires Docker only (the Gradle wrapper downloads Gradle; the build runs inside Docker).
+**Requirements**
+
+- Docker with Compose v2.20+ (needs `--wait` and `!reset` in `docker-compose.scale.yml`).
+- For IDE / Gradle runs only: any JDK 17+ to start the wrapper; Gradle downloads the Java 25 toolchain itself (foojay resolver).
+- For regenerating seed data only: Python 3.9+ (`seeding/generate.py`). Loading the seed needs Docker only.
+
+**Configuration**
 
 ```bash
 cp .env.example .env
-docker compose up -d --build --wait
 ```
+
+| Variable | Default | Used for |
+|---|---|---|
+| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | `scheduler` | Database and credentials (shared by Postgres and both apps) |
+| `POSTGRES_PORT` / `REDIS_PORT` | `5432` / `6379` | Host ports, for IDE runs and DB clients |
+| `API_PORT` | `8080` | nginx (the API entry point) |
+| `BATCH_PORT` | `8081` | `scheduler-batch` actuator |
+| `HEARTBEAT_CRON` | `*/30 * * * * *` | `heartbeatJob` schedule (Spring cron, with seconds) |
+| `TZ` | `Asia/Ho_Chi_Minh` | JVM zone of the app containers: log timestamps and cron |
+
+Every variable has a default in `docker-compose.yml`, so `.env` is only needed to change one. Change ports here if `5432`/`6379`/`8080`/`8081` are already taken on your machine.
+
+## Quick start
+
+```bash
+docker compose up -d --build --wait     # postgres, redis, 2× server-api, scheduler-batch, nginx
+seeding/seed.sh                         # optional: load test data (schema is already migrated)
+```
+
+`--wait` returns once every container is healthy. Startup order is enforced by health checks: postgres/redis → `server-api` (runs Flyway) → `scheduler-batch` and nginx.
+
+Check that it works:
 
 ```bash
 curl localhost:8080/api/v1/ping
 curl localhost:8080/actuator/health
 curl localhost:8081/actuator/health
-docker compose logs -f scheduler-batch   # heartbeatJob every 30 s
+docker compose ps
 ```
+
+Logs:
+
+```bash
+docker compose logs -f scheduler-batch   # heartbeatJob every 30 s
+ls logs/                                 # Log4j2 files, one per container (<app>-<container id>.log)
+```
+
+Stop with `docker compose down` (keeps data) or `docker compose down -v` (wipes Postgres and Redis).
+
+## Running in other ways
 
 ### Load balancer and API replicas
 
@@ -54,6 +93,8 @@ docker compose up -d postgres redis
 ./gradlew :server-api:bootRun
 ./gradlew :scheduler-batch:bootRun
 ```
+
+The apps default to `localhost` for Postgres/Redis and write log files to `<repo>/logs`. Start `server-api` first: it owns the Flyway migrations.
 
 ### Several batch replicas
 
