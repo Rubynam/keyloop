@@ -1,0 +1,21 @@
+{
+  "profile": "load",
+  "endpoints": {},
+  "errors": [
+    "/api/v1/availability [hot]: no requests",
+    "/api/v1/availability [cold]: no requests",
+    "/api/v1/availability [invalid]: no requests",
+    "/api/v1/dealerships: no requests",
+    "/api/v1/service-types: no requests",
+    "/api/v1/appointments: no requests",
+    "/api/v1/appointments/{id}: no requests",
+    "/api/v1/appointments/{id}/cancel: no requests",
+    "/api/v1/appointments/{id}/reschedule: no requests"
+  ],
+  "total": {
+    "requests": 0,
+    "failRatio": 0.0,
+    "5xx": 0
+  },
+  "ok": false
+}

@@ -80,7 +80,7 @@ services:
     image: keyloop/scheduler-batch:local
     environment:
       <<: *app-env
-      HEARTBEAT_CRON: ${HEARTBEAT_CRON:-*/30 * * * * *}
+      HEARTBEAT_CRON: ${HEARTBEAT_CRON:-0 */5 * * * *}
     volumes:
       - ./logs:/app/logs
     ports:

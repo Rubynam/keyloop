@@ -13,4 +13,13 @@ dependencies {
     implementation(libs.shedlock.spring)
     implementation(libs.shedlock.jdbc)
     runtimeOnly("org.postgresql:postgresql")
+
+    // Integration tests against real Postgres 18 + Redis 8 (Spec04 TST-01)
+    testImplementation("org.springframework.boot:spring-boot-testcontainers")
+    testImplementation("org.testcontainers:testcontainers-junit-jupiter")
+    testImplementation("org.testcontainers:testcontainers-postgresql")
+    testImplementation("com.redis:testcontainers-redis")
+    // Tests only: apply server-api's migrations to the test database (the app itself never runs Flyway, BAT-03)
+    testImplementation("org.springframework.boot:spring-boot-starter-flyway")
+    testImplementation("org.flywaydb:flyway-database-postgresql")
 }

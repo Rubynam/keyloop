@@ -4,7 +4,8 @@ flowchart LR
     E3["Vehicle not owned by customer"] --> H1
     E4["No free bay + technician for the vehicle type"] --> H3["409 Conflict"]
     E9["No bay or technician at the dealership takes the vehicle type"] --> H7["422 Unprocessable Entity"]
-    E5["Exclusion violation after all retries"] --> H3
+    E5["Exclusion violation after 3 pairs"] --> H3
+    H3 -.- M3["detail: Booking failed: no technician or service bay<br/>is available for the requested time. Please choose another slot."]
     E6["Rate limit exceeded"] --> H4["429 Too Many Requests"]
     E7["Redis unavailable"] --> H5["Fail-open: serve from PostgreSQL<br/>+ log + span event"]
     E8["PostgreSQL unavailable"] --> H6["503 Service Unavailable"]

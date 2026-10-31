@@ -10,6 +10,9 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${POSTGRES_DB:scheduler}?currentSchema=batch,public
     username: ${POSTGRES_USER:scheduler}
     password: ${POSTGRES_PASSWORD:scheduler}
+    hikari:
+      # A hung worker must not hold outbox row locks forever (Spec04 REL-06)
+      connection-init-sql: SET idle_in_transaction_session_timeout = '30s'
   sql:
     init:
       mode: always   # schema.sql → ShedLock table
@@ -22,16 +25,29 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      timeout: 1s   # upper bound for one command (Spec04 REL-05)
 
 scheduler:
   jobs:
     heartbeat:
       enabled: true
-      cron: ${HEARTBEAT_CRON:*/30 * * * * *}
-    outbox-relay:
+      # Every 5 min: each run adds Batch metadata rows (Spec04 CLN-04)
+      cron: ${HEARTBEAT_CRON:0 */5 * * * *}
+  # Spec04 §7. Not under "jobs": the relay is a plain worker, not a Batch job.
+  outbox:
+    relay:
       enabled: false
-    outbox-cleanup:
+      poll-delay: 500ms
+      batch-size: 100
+      max-retries: 3      # after the first try; then the event is FAILED
+      retry-delay: 2s     # fixed, no backoff
+      version-key-ttl: 2d
+    cleanup:
       enabled: false
+      cron: 0 0 3 * * *
+      processed-retention: 7d
+      failed-retention: 30d
+      batch-metadata-retention: 7d
 
 management:
   endpoints:

@@ -1,6 +1,7 @@
 -- Fails (non-zero exit) when the seed breaks a Spec03 rule:
 --   entity tables and car_info: exactly 100 rows; join tables: at least 100;
---   vehicle_types: the small lookup list; every id is a UUIDv7.
+--   vehicle_types: the small lookup list; every id is a UUIDv7;
+--   outbox has a FAILED row and a PENDING row not due yet (Spec04).
 DO $$
 DECLARE
     t text;
@@ -28,6 +29,14 @@ BEGIN
     IF (SELECT count(*) FROM vehicle_types WHERE uuid_extract_version(id) = 7) = 0 THEN
         RAISE EXCEPTION 'vehicle_types is empty or not UUIDv7';
     END IF;
+    -- Spec04 §5: outbox states the relay must handle
+    IF NOT EXISTS (SELECT 1 FROM outbox_events WHERE failed_at IS NOT NULL) THEN
+        RAISE EXCEPTION 'outbox_events has no FAILED row';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM outbox_events
+                   WHERE processed_at IS NULL AND failed_at IS NULL AND next_attempt_at > now()) THEN
+        RAISE EXCEPTION 'outbox_events has no PENDING row that is not due yet';
+    END IF;
 END $$;
 
 SELECT vt.code AS vehicle_type, count(DISTINCT ci.id) AS models, count(DISTINCT v.id) AS vehicles,
@@ -39,4 +48,7 @@ LEFT JOIN service_bay_vehicle_types sb ON sb.vehicle_type_id = vt.id
 LEFT JOIN technician_vehicle_types tv ON tv.vehicle_type_id = vt.id
 GROUP BY vt.code ORDER BY vt.code;
 SELECT status, count(*) FROM appointments GROUP BY status ORDER BY status;
-SELECT processed_at IS NULL AS pending, count(*) FROM outbox_events GROUP BY 1 ORDER BY 1;
+SELECT CASE WHEN processed_at IS NOT NULL THEN 'PROCESSED'
+            WHEN failed_at IS NOT NULL THEN 'FAILED'
+            ELSE 'PENDING' END AS outbox_state, count(*)
+FROM outbox_events GROUP BY 1 ORDER BY 1;

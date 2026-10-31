@@ -1,0 +1,26 @@
+{
+  "profile": "smoke",
+  "endpoints": {
+    "GET /api/v1/ping": {
+      "requests": 5,
+      "failRatio": 0.0,
+      "p95": 13,
+      "ok": true,
+      "errors": []
+    },
+    "GET /actuator/health": {
+      "requests": 5,
+      "failRatio": 0.0,
+      "p95": 7,
+      "ok": true,
+      "errors": []
+    }
+  },
+  "errors": [],
+  "total": {
+    "requests": 25,
+    "failRatio": 0.0,
+    "5xx": 0
+  },
+  "ok": true
+}

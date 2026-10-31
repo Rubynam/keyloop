@@ -1,0 +1,58 @@
+{
+  "profile": "race",
+  "endpoints": {},
+  "errors": [
+    "total fail ratio 100.00% > 0.00%",
+    "RC-01: status 404 not allowed",
+    "RC-01: 0 x 201, expected exactly 1",
+    "RC-01: 0 x 409, expected exactly 9",
+    "RC-02: status 404 not allowed",
+    "RC-02: 0 x 201, expected exactly 10",
+    "RC-03: status 404 not allowed",
+    "RC-03: 0 x 201, expected exactly 1",
+    "RC-03: 0 x 409, expected exactly 9"
+  ],
+  "total": {
+    "requests": 30,
+    "failRatio": 1.0,
+    "5xx": 0
+  },
+  "aggregates": {
+    "RC-01": {
+      "goal": "Capacity 1: London Park Royal has ONE oil-change technician (Yuki). 10 different cars want 10:00 London time → exactly 1 x 201, 9 x 409. Two 201s = the exclusion constraint or the retry loop is broken.",
+      "counts": {
+        "404": 10
+      },
+      "ok": false,
+      "errors": [
+        "status 404 not allowed",
+        "0 x 201, expected exactly 1",
+        "0 x 409, expected exactly 9"
+      ]
+    },
+    "RC-02": {
+      "goal": "Idempotency race: the SAME request with the SAME Idempotency-Key from 10 users at once (a client retrying in parallel) → 10 x 201 and ONE appointment id. A unique-key violation must be turned into 'return the existing one', not 409/500.",
+      "counts": {
+        "404": 10
+      },
+      "ok": false,
+      "errors": [
+        "status 404 not allowed",
+        "0 x 201, expected exactly 10"
+      ]
+    },
+    "RC-03": {
+      "goal": "One car, many keys: the same vehicle booked 10 times at once with DIFFERENT keys at the hub, which has 6 free oil-change technicians and 8 bays → still exactly 1 x 201: the vehicle itself is a resource (DB-03).",
+      "counts": {
+        "404": 10
+      },
+      "ok": false,
+      "errors": [
+        "status 404 not allowed",
+        "0 x 201, expected exactly 1",
+        "0 x 409, expected exactly 9"
+      ]
+    }
+  },
+  "ok": false
+}

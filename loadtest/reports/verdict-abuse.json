@@ -1,0 +1,38 @@
+{
+  "profile": "abuse",
+  "endpoints": {
+    "GET /api/v1/availability [abuse]": {
+      "requests": 244,
+      "failRatio": 1.0,
+      "p95": 6,
+      "ok": true,
+      "errors": []
+    }
+  },
+  "errors": [
+    "total fail ratio 100.00% > 0.00%",
+    "RL-01: status 404 not allowed",
+    "RL-01: 0 x 200, expected at least 1",
+    "RL-01: 0 x 429, expected at least 1"
+  ],
+  "total": {
+    "requests": 244,
+    "failRatio": 1.0,
+    "5xx": 0
+  },
+  "aggregates": {
+    "RL-01": {
+      "goal": "Burst from ONE client IP on the hot availability query → first requests 200, then 429 with Retry-After and a ProblemDetail body. Never 5xx, never a hang.",
+      "counts": {
+        "404": 244
+      },
+      "ok": false,
+      "errors": [
+        "status 404 not allowed",
+        "0 x 200, expected at least 1",
+        "0 x 429, expected at least 1"
+      ]
+    }
+  },
+  "ok": false
+}

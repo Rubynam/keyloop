@@ -1,0 +1,21 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,/api/v1/availability [edge],"CatchResponseError('AV-04/AV-04: status 404, expected [200]')",6,2026-10-31T05:36:32Z,2026-10-31T05:36:55Z
+GET,/api/v1/availability [hot],"CatchResponseError('AV-01/AV-01: status 404, expected [200]')",131,2026-10-31T05:36:27Z,2026-10-31T05:36:56Z
+GET,/api/v1/availability [invalid],"CatchResponseError('AV-08/AV-08: status 404, expected [400]')",3,2026-10-31T05:36:29Z,2026-10-31T05:36:50Z
+GET,/api/v1/availability [empty],"CatchResponseError('AV-05/AV-05: status 404, expected [200]')",4,2026-10-31T05:36:33Z,2026-10-31T05:36:49Z
+POST,/api/v1/appointments,"CatchResponseError('BK-02/first: status 404, expected [201]')",6,2026-10-31T05:36:30Z,2026-10-31T05:36:56Z
+GET,/api/v1/availability [invalid],"CatchResponseError('AV-09/AV-09: status 404, expected [400]')",6,2026-10-31T05:36:28Z,2026-10-31T05:36:54Z
+POST,/api/v1/appointments,"CatchResponseError('BK-01/BK-01: status 404, expected [201, 409]')",21,2026-10-31T05:36:27Z,2026-10-31T05:36:55Z
+GET,/api/v1/vehicle-types,"CatchResponseError('CT-03/CT-03: status 404, expected [200]')",3,2026-10-31T05:36:30Z,2026-10-31T05:36:54Z
+GET,/api/v1/availability [invalid],"CatchResponseError('AV-07/AV-07: status 404, expected [400]')",2,2026-10-31T05:36:38Z,2026-10-31T05:36:54Z
+GET,/api/v1/availability [empty],"CatchResponseError('AV-06/AV-06: status 404, expected [200]')",7,2026-10-31T05:36:30Z,2026-10-31T05:36:55Z
+POST,/api/v1/appointments [invalid],"CatchResponseError('BK-04/BK-04: status 404, expected [400]')",2,2026-10-31T05:36:28Z,2026-10-31T05:36:44Z
+POST,/api/v1/appointments,"CatchResponseError('LC-01/book: status 404, expected [201]')",2,2026-10-31T05:36:32Z,2026-10-31T05:36:41Z
+GET,/api/v1/appointments?dealershipId&date,"CatchResponseError('LC-03/LC-03: status 404, expected [200]')",1,2026-10-31T05:36:47Z,2026-10-31T05:36:47Z
+GET,/api/v1/service-types,"CatchResponseError('CT-02/CT-02: status 404, expected [200]')",7,2026-10-31T05:36:32Z,2026-10-31T05:36:52Z
+POST,/api/v1/appointments,"CatchResponseError('BK-03/first: status 404, expected [201]')",2,2026-10-31T05:36:37Z,2026-10-31T05:36:37Z
+GET,/api/v1/vehicles/{vin},"CatchResponseError('CT-04/CT-04: status 404, expected [200]')",3,2026-10-31T05:36:30Z,2026-10-31T05:36:51Z
+POST,/api/v1/appointments [unprocessable],"CatchResponseError('BK-10/BK-10: status 404, expected [422]')",1,2026-10-31T05:36:34Z,2026-10-31T05:36:34Z
+GET,/api/v1/availability [cold],"CatchResponseError('AV-02/AV-02: status 404, expected [200]')",33,2026-10-31T05:36:27Z,2026-10-31T05:36:56Z
+GET,/api/v1/dealerships,"CatchResponseError('CT-01/CT-01: status 404, expected [200]')",7,2026-10-31T05:36:29Z,2026-10-31T05:36:53Z
+GET,/api/v1/availability [edge],"CatchResponseError('AV-03/AV-03: status 404, expected [200]')",10,2026-10-31T05:36:28Z,2026-10-31T05:36:55Z
