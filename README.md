@@ -63,6 +63,14 @@ Replicas cannot share host port 8081, so use the override that unpublishes it:
 docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --scale scheduler-batch=2
 ```
 
+### Seed data
+
+100 rows per table, with edge cases ([Spec03](planing/Spec03.md)). Needs the schema, so start `server-api` first.
+
+```bash
+seeding/seed.sh
+```
+
 ### Build and test
 
 ```bash

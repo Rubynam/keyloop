@@ -97,7 +97,10 @@ Spec: [`planing/Spec02.md`](planing/Spec02.md)
 - API: forwarded headers, graceful shutdown, `X-Request-Id` in MDC.
 
 ## Phase 3 — Core Features
-<!-- TODO -->
+Spec: [`planing/Spec03.md`](planing/Spec03.md)
+- Flyway `V2__domain_schema`: all ERD tables; exclusion constraints on technician / bay / vehicle; composite FKs for pool (D2) and dealership.
+- Enum values (`VehicleType`, `AppointmentStatus`) defined in Java only, no DB `CHECK` lists.
+- `seeding/`: 100 rows per table with tagged edge cases (time zones, DST, durations, capacity, lifecycle, outbox states).
 
 ## Phase 4 — Testing
 <!-- TODO -->
