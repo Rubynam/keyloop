@@ -29,6 +29,9 @@ public class AvailabilityService {
 
     /** D1 abuse bound: at most this many local dates per request. */
     static final int MAX_DAYS = 14;
+    /** Sane date bounds: java.time extremes would overflow on plusDays / atStartOfDay. */
+    static final int MIN_YEAR = 1;
+    static final int MAX_YEAR = 9999;
 
     private final AvailabilityRepository repository;
     private final Clock clock;
@@ -88,6 +91,9 @@ public class AvailabilityService {
     }
 
     static void validateRange(LocalDate from, LocalDate to) {
+        if (outOfBounds(from) || outOfBounds(to)) {
+            throw new InvalidRangeException("Dates must be between years " + MIN_YEAR + " and " + MAX_YEAR);
+        }
         if (to.isBefore(from)) {
             throw new InvalidRangeException("'to' (" + to + ") is before 'from' (" + from + ")");
         }
@@ -95,6 +101,10 @@ public class AvailabilityService {
         if (days > MAX_DAYS) {
             throw new InvalidRangeException("Range is " + days + " days; at most " + MAX_DAYS + " are allowed");
         }
+    }
+
+    private static boolean outOfBounds(LocalDate date) {
+        return date.getYear() < MIN_YEAR || date.getYear() > MAX_YEAR;
     }
 
     private static ZoneId zoneOf(Dealership dealership) {

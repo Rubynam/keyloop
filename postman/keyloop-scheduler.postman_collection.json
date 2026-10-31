@@ -218,7 +218,7 @@
                 }
               ]
             },
-            "description": "Seed-pinned: one fitting bay and one qualified technician, booked 08:00-09:00. Half-open windows make 09:00 free."
+            "description": "Seed-pinned: one fitting bay and one qualified technician, booked 08:00-09:00. Half-open windows make 09:00 free. Slot checks are skipped once the date has passed."
           },
           "event": [
             {
@@ -227,17 +227,19 @@
                 "type": "text/javascript",
                 "exec": [
                   "const body = pm.response.json();",
-                  "pm.test(\"200\", () => pm.response.to.have.status(200));",
-                  "const starts = body.days[0].slots.map(s => s.start);",
-                  "// Seed: the only bay + technician pair is busy 08:00-09:00 local on 2026-11-03",
-                  "if (Date.now() < Date.parse(\"2026-11-03T09:00:00+07:00\")) {",
-                  "    pm.test(\"09:00 offered right after the 08:00-09:00 job\", () => {",
-                  "        pm.expect(starts).to.include(\"2026-11-03T09:00:00+07:00\");",
-                  "    });",
-                  "} else {",
-                  "    pm.test.skip(\"09:00 offered right after the 08:00-09:00 job (date passed)\", () => {});",
-                  "}",
-                  "pm.test(\"08:00-08:45 not offered (overlap)\", () => {",
+                  "const day = (body.days || [])[0] || { slots: [] };",
+                  "pm.test(\"200, Asia/Ho_Chi_Minh, 2026-11-03 listed\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.timezone).to.eql(\"Asia/Ho_Chi_Minh\");",
+                  "    pm.expect(body.days).to.have.lengthOf(1);",
+                  "    pm.expect(day.date).to.eql(\"2026-11-03\");",
+                  "});",
+                  "// Seed: the only bay + technician pair is busy 08:00-09:00 local on 2026-11-03.",
+                  "// Before 08:00 local every check below is meaningful; after that, slots are past and dropped.",
+                  "const live = Date.now() < Date.parse(\"2026-11-03T08:00:00+07:00\");",
+                  "(live ? pm.test : pm.test.skip)(\"09:00 offered right after the 08:00-09:00 job, 08:00-08:45 not\", () => {",
+                  "    const starts = day.slots.map(s => s.start);",
+                  "    pm.expect(starts).to.include(\"2026-11-03T09:00:00+07:00\");",
                   "    [\"08:00\", \"08:15\", \"08:30\", \"08:45\"].forEach(t =>",
                   "        pm.expect(starts).to.not.include(`2026-11-03T${t}:00+07:00`));",
                   "});"
@@ -289,7 +291,7 @@
                 }
               ]
             },
-            "description": "Express kiosk open 09:00-10:00; seed fills the hour (09:00-09:30, 09:30-09:55, 09:59-10:00), so a 30-min job never fits."
+            "description": "Express kiosk open 09:00-10:00; seed fills the hour (09:00-09:30, 09:30-09:55, 09:59-10:00), so a 30-min job never fits. The no-slot check is skipped once the date has passed."
           },
           "event": [
             {
@@ -298,12 +300,17 @@
                 "type": "text/javascript",
                 "exec": [
                   "const body = pm.response.json();",
-                  "pm.test(\"200 with the date listed and no slots\", () => {",
+                  "const day = (body.days || [])[0] || { slots: [] };",
+                  "pm.test(\"200, Asia/Singapore, 2026-11-04 listed\", () => {",
                   "    pm.response.to.have.status(200);",
                   "    pm.expect(body.timezone).to.eql(\"Asia/Singapore\");",
                   "    pm.expect(body.days).to.have.lengthOf(1);",
-                  "    pm.expect(body.days[0].date).to.eql(\"2026-11-04\");",
-                  "    pm.expect(body.days[0].slots).to.be.empty;",
+                  "    pm.expect(day.date).to.eql(\"2026-11-04\");",
+                  "});",
+                  "// Once the kiosk has opened, slots would be empty anyway (past), so the check proves nothing",
+                  "const live = Date.now() < Date.parse(\"2026-11-04T09:00:00+08:00\");",
+                  "(live ? pm.test : pm.test.skip)(\"no slots: the seed fills the only opening hour\", () => {",
+                  "    pm.expect(day.slots).to.be.empty;",
                   "});"
                 ]
               }
@@ -353,7 +360,7 @@
                 }
               ]
             },
-            "description": "US DST ends 2026-11-01 02:00. Business hours stay 07:00-19:00 local; the UTC offset in the slots changes."
+            "description": "US DST ends 2026-11-01 02:00. Business hours stay 07:00-19:00 local; the UTC offset in the slots changes. Per-date checks are skipped once that date's last slot has passed."
           },
           "event": [
             {
@@ -362,30 +369,37 @@
                 "type": "text/javascript",
                 "exec": [
                   "const body = pm.response.json();",
+                  "const days = body.days || [];",
                   "pm.test(\"200, America/New_York, three dates\", () => {",
                   "    pm.response.to.have.status(200);",
                   "    pm.expect(body.timezone).to.eql(\"America/New_York\");",
-                  "    pm.expect(body.days.map(d => d.date)).to.eql([\"2026-10-31\", \"2026-11-01\", \"2026-11-02\"]);",
+                  "    pm.expect(days.map(d => d.date)).to.eql([\"2026-10-31\", \"2026-11-01\", \"2026-11-02\"]);",
                   "});",
-                  "pm.test(\"offset is -04:00 before DST ends, -05:00 after\", () => {",
-                  "    body.days[0].slots.forEach(s => pm.expect(s.start).to.match(/-04:00$/));",
-                  "    body.days[1].slots.forEach(s => pm.expect(s.start).to.match(/-05:00$/));",
-                  "    body.days[2].slots.forEach(s => pm.expect(s.start).to.match(/-05:00$/));",
-                  "});",
-                  "pm.test(\"starts follow the wall clock inside 07:00-19:00\", () => {",
-                  "    body.days.flatMap(d => d.slots).forEach(s => {",
-                  "        const hhmm = s.start.slice(11, 16);",
-                  "        pm.expect(hhmm >= \"07:00\" && hhmm <= \"18:00\", hhmm).to.be.true;",
-                  "        pm.expect(hhmm).to.match(/:(00|15|30|45)$/);",
+                  "// Per date: checked only while its last 60-min slot (18:00 local) is still ahead, so a",
+                  "// passed date cannot make the checks pass on an empty list.",
+                  "[",
+                  "    { date: \"2026-10-31\", offset: \"-04:00\" },",
+                  "    { date: \"2026-11-01\", offset: \"-05:00\" },",
+                  "    { date: \"2026-11-02\", offset: \"-05:00\" },",
+                  "].forEach(({ date, offset }) => {",
+                  "    const day = days.find(d => d.date === date) || { slots: [] };",
+                  "    const live = Date.now() < Date.parse(`${date}T18:00:00${offset}`);",
+                  "    (live ? pm.test : pm.test.skip)(`${date}: slots at ${offset} on the 07:00-18:00 wall clock`, () => {",
+                  "        pm.expect(day.slots).to.not.be.empty;",
+                  "        day.slots.forEach(s => {",
+                  "            pm.expect(s.start.endsWith(offset), s.start).to.be.true;",
+                  "            const hhmm = s.start.slice(11, 16);",
+                  "            pm.expect(hhmm >= \"07:00\" && hhmm <= \"18:00\", hhmm).to.be.true;",
+                  "            pm.expect(hhmm).to.match(/:(00|15|30|45)$/);",
+                  "        });",
+                  "        pm.expect(day.slots[day.slots.length - 1].start).to.eql(`${date}T18:00:00${offset}`);",
                   "    });",
                   "});",
-                  "if (Date.now() < Date.parse(\"2026-11-02T07:00:00-05:00\")) {",
-                  "    pm.test(\"2026-11-02 opens at 07:00 local (-05:00)\", () => {",
-                  "        pm.expect(body.days[2].slots[0].start).to.eql(\"2026-11-02T07:00:00-05:00\");",
-                  "    });",
-                  "} else {",
-                  "    pm.test.skip(\"2026-11-02 opens at 07:00 local (date passed)\", () => {});",
-                  "}"
+                  "const nov2 = days.find(d => d.date === \"2026-11-02\") || { slots: [] };",
+                  "(Date.now() < Date.parse(\"2026-11-02T07:00:00-05:00\") ? pm.test : pm.test.skip)(",
+                  "    \"2026-11-02 opens at 07:00 local (-05:00)\", () => {",
+                  "        pm.expect(nov2.slots[0].start).to.eql(\"2026-11-02T07:00:00-05:00\");",
+                  "    });"
                 ]
               }
             }

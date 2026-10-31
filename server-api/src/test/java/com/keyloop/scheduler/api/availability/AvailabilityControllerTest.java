@@ -21,6 +21,7 @@ import com.keyloop.scheduler.api.availability.AvailabilityResponse.Slot;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -84,6 +85,7 @@ class AvailabilityControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.title").value("Not Found"))
                 .andExpect(jsonPath("$.detail").value(containsString(DEALER.toString())));
     }
 
@@ -130,7 +132,32 @@ class AvailabilityControllerTest {
                         .param("from", "2026-10-31")
                         .param("to", "2026-11-01"))
                 .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(400));
         verifyNoInteractions(service);
+    }
+
+    @Test
+    void databaseErrorIs503ProblemWithoutInternals() throws Exception {
+        when(service.find(any(), any(), any(), any(), any()))
+                .thenThrow(new DataAccessResourceFailureException("connection to 10.0.0.5 refused"));
+
+        mockMvc.perform(request("2026-10-31", "2026-11-01"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(content().string(not(containsString("10.0.0.5"))));
+    }
+
+    @Test
+    void unexpectedErrorIs500ProblemWithoutInternals() throws Exception {
+        when(service.find(any(), any(), any(), any(), any()))
+                .thenThrow(new IllegalStateException("secret internal state"));
+
+        mockMvc.perform(request("2026-10-31", "2026-11-01"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(500))
+                .andExpect(content().string(not(containsString("secret"))));
     }
 }
