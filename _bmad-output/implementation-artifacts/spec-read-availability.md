@@ -2,10 +2,10 @@
 title: 'Read availability API (dealer + service type + vehicle type, from/to)'
 type: 'feature'
 created: '2026-10-31'
-status: 'in-progress'
-baseline_commit: '77d1b3491b5731c78838bbf0b60d9d8fa426883a'
+status: 'done'
+baseline_commit: '71e0713c608c5871074f4ce86c4d581628687891'
 route: 'dispatch'
-review_loop_iteration: 0
+review_loop_iteration: 1
 context:
   - '{project-root}/docs/detail-level-design.md'
   - '{project-root}/ROADMAP.md'
@@ -78,6 +78,8 @@ context:
 - [x] `postman/keyloop-scheduler.postman_collection.json` + `postman/local.postman_environment.json` + `postman/README.md` -- v2.1 collection: ping, happy path, DST, 24h, hydrogen empty, 404, 400s, each with test scripts; env holds `baseUrl` and seed ids.
 - [x] `README.md` -- short "Manual API testing (Postman)" section.
 
+- [x] `server-api/src/test/java/com/keyloop/scheduler/api/availability/AvailabilityRepositoryIT.java` -- extends `support.IntegrationTest` (Testcontainers Postgres + Flyway): seed one dealership and assert `AvailabilityService.find` / repository results for cancelled vs confirmed jobs, half-open overlap, inactive bay, technician with skill but no certification, `close_time = '24:00'` -- the only check that runs the SQL.
+
 **Acceptance Criteria:**
 - Given the compose stack is up and seeded, when the Postman collection runs (Collection Runner or `newman`), then every request's tests pass.
 - Given `./gradlew :server-api:test`, then all tests pass.
@@ -86,7 +88,27 @@ context:
 
 ## Spec Change Log
 
+- Review loop 1 (finding #1): no test ran the availability SQL. Human decision: base `feat/read-availability` on `71e0713` (Spec04: Testcontainers + `support.IntegrationTest`) and add `AvailabilityRepositoryIT`. Amended: baseline, Tasks (new IT task). Code was NOT reverted — all other findings are patches. KEEP: SlotCalculator design (getValidOffsets for DST), JdbcClient repository, ApiExceptionHandler extending ResponseEntityExceptionHandler.
+
 ## Review Triage Log
+
+| # | Source | Finding | Verdict | Evidence | Route |
+|---|--------|---------|---------|----------|-------|
+| 1 | verification-gap, blind | `AvailabilityRepository` SQL (cancelled filter, overlap, active/fit joins, 24:00 extract, IN binding) runs in no automated test | medium | Controller test mocks the service; calculator tests take in-memory intervals; baseline has no Testcontainers / IntegrationTest support (that lives on unmerged `71e0713`) | human decision (test infra base) |
+| 2 | verification-gap, blind, edge | `SlotCalculatorTest.cancelledJobsAreNotBusy` passes FREE lists, identical to happy path: false coverage | low | Test body uses `FREE`/`FREE`; cancellation is filtered only in SQL. Same root cause as #1 for real coverage; rename/remove is direct | patch |
+| 3 | verification-gap, blind | `AvailabilityService.find` wiring (booking→bay/tech maps, clock, skip-on-empty) untested; `Clock` ctor unused | medium | `AvailabilityServiceTest` only calls static `validateRange` | patch (Mockito service test) |
+| 4 | blind | Unexpected errors (bad zone, DB down) return Boot's default `/error` body, not ProblemDetail; DLD §11 says DB down → 503 | medium | `ApiExceptionHandler` maps only NotFound / InvalidRange; `ResponseEntityExceptionHandler` covers MVC exceptions only | patch |
+| 5 | blind, edge | `to=+999999999-12-31` passes `validateRange`, `plusDays(1)` throws `DateTimeException` → 500 | low | `ISO.DATE` parses signed years; direct guard in `validateRange` | patch |
+| 6 | blind | `SlotCalculator.compute` does not guard close<=open, duration<=0, from>to | false | DB `ck_dealerships_hours` (close > open) and `ck_service_types_duration` (1..1440); service validates from<=to | reject |
+| 7 | blind | `findBookings` with empty collection renders `IN ()` | low | Only caller already guards; adding a guard is extra branch for an unseen caller | reject |
+| 8 | blind, verification-gap | Postman back-to-back "not offered", kiosk "no slots", DST forEach checks pass vacuously once their dates are past | low | Assertions lack the date guard the others use; direct fix | patch |
+| 9 | blind | Back-to-back Postman request never asserts `timezone` / day date | low | Other fixed-date requests assert timezone; one-line add | patch |
+| 10 | blind | Rolling `futureDate` (today+3) may collide with seeded bookings on the 24h hub | maybe-false (low) | Passed on this run; would need a scan of roadside-hub seed rows per date | reject |
+| 11 | blind | Root README Postman snippet omits `docker compose up` | low | Getting-started section above already starts the stack, but the snippet is copy-pasted alone; one-line add | patch |
+| 12 | blind | `malformedUuidIs400Problem` does not assert `application/problem+json` | low | Other 400 tests assert it; one-line add | patch |
+| 13 | blind | ProblemDetail has no stable `type` URI | low | New public error-code surface, not asked for | reject |
+| 14 | edge | `open_time`/`close_time` with seconds: `numeric::int` rounds, so a window can start before open / end after close | low | `TIME` allows seconds; ceil(open)/floor(close) is a direct correction | patch |
+| 15 | edge | Postman back-to-back script reads `body.days[0]` outside `pm.test` → TypeError hides assertions | low | Direct null-safe read | patch |
 
 ## Design Notes
 

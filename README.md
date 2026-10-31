@@ -99,6 +99,7 @@ seeding/seed.sh
 [`postman/`](postman/README.md) has a collection + environment with the seed ids and test scripts:
 
 ```bash
+docker compose up -d --build --wait
 seeding/seed.sh
 npx newman run postman/keyloop-scheduler.postman_collection.json -e postman/local.postman_environment.json
 ```

@@ -32,11 +32,12 @@ public class AvailabilityRepository {
     }
 
     public Optional<Dealership> findDealership(UUID id) {
-        // EXTRACT keeps '24:00' as 1440; a LocalTime cannot hold it
+        // EXTRACT keeps '24:00' as 1440; a LocalTime cannot hold it. Seconds round inwards
+        // (open up, close down) so a slot never starts before open or ends after close.
         return jdbc.sql("""
                         SELECT timezone,
-                               (EXTRACT(EPOCH FROM open_time) / 60)::int  AS open_minute,
-                               (EXTRACT(EPOCH FROM close_time) / 60)::int AS close_minute
+                               ceil(EXTRACT(EPOCH FROM open_time) / 60)::int   AS open_minute,
+                               floor(EXTRACT(EPOCH FROM close_time) / 60)::int AS close_minute
                         FROM dealerships WHERE id = :id
                         """)
                 .param("id", id)

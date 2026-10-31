@@ -85,15 +85,6 @@ class SlotCalculatorTest {
     }
 
     @Test
-    void cancelledJobsAreNotBusy() {
-        // The repository filters CANCELLED out, so the calculator just sees no busy interval
-        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 60,
-                List.of(FREE), List.of(FREE), LONG_AGO).getFirst();
-
-        assertThat(localStarts(day)).contains("09:00", "09:15");
-    }
-
-    @Test
     void serviceLongerThanOpeningHoursHasNoSlots() {
         Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 600,
                 List.of(FREE), List.of(FREE), LONG_AGO).getFirst();
