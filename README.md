@@ -8,6 +8,7 @@ Keyloop technical assessment, Scenario A. Design notes: [ROADMAP.md](ROADMAP.md)
 |---|---|---|
 | `nginx` | Load balancer, single entry point; discovers `server-api` replicas via Docker DNS ([Spec02](planing/Spec02.md)) | 8080 |
 | `server-api` | REST API, owns the DB schema (Flyway), talks to PostgreSQL + Redis. 2 replicas by default, reached only through nginx | — |
+| `loadtest` | Locust load tests, profile `loadtest` only ([Spec06](planing/Spec06.md)) | 8089 (UI) |
 | `scheduler-batch` | Spring Batch worker jobs, scheduled with ShedLock (one run per tick across replicas) | 8081 (actuator) |
 
 Stack: Java 25 · Spring Boot 4.1 · Gradle 9 (wrapper) · PostgreSQL 18 · Redis 8.
@@ -105,6 +106,17 @@ npx newman run postman/keyloop-scheduler.postman_collection.json -e postman/loca
 ```
 
 Or import both files into Postman and run the collection with the *keyloop local* environment.
+
+### Load tests (Locust)
+
+[Spec06](planing/Spec06.md). Input requests in `loadtest/input/`, expected outputs in `loadtest/expected/` (one file each per suite, joined by case id). Reports in `loadtest/reports/`.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.loadtest.yml run --rm --no-deps --entrypoint python locust tools/check_scenarios.py
+docker compose -f docker-compose.yml -f docker-compose.loadtest.yml run --rm locust          # smoke
+LOADTEST_PROFILE=load LOCUST_USERS=50 LOCUST_RUN_TIME=10m docker compose -f docker-compose.yml -f docker-compose.loadtest.yml run --rm locust
+docker compose exec -T postgres psql -U scheduler -d scheduler < loadtest/verify/invariants.sql   # 0 rows expected
+```
 
 ### Build and test
 

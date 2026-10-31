@@ -1,0 +1,77 @@
+{
+  "suite": "60-race",
+  "goal": "Double-booking under true concurrency (ROADMAP D1, Spec03 DB-01..03). N users are held at a gate and released at the same instant on the same slot. The expected output is a COUNT across all users, not one response: exactly as many 201 as there is capacity, every other user 409. Afterwards verify/invariants.sql must return 0 rows.",
+  "precondition": "Profile 'race', standalone (no workers), users = 10. Day = 'run' → each run lands on a fresh day 30–329 days ahead; reseed (seeding/seed.sh) if a run is repeated with the same day.",
+  "expectedFile": "expected/60-race.json",
+  "_doc": "Input requests. Locust loads this file, binds {{tokens}}, sends each request, then checks it against expectedFile.",
+  "cases": [
+    {
+      "id": "RC-01",
+      "goal": "Capacity 1: London Park Royal has ONE oil-change technician (Yuki). 10 different cars want 10:00 London time → exactly 1 x 201, 9 x 409. Two 201s = the exclusion constraint or the retry loop is broken.",
+      "verifies": ["Spec03 DB-01 ex_appointments_technician", "DLD §5 retry next pair"],
+      "bind": {
+        "v": "pick:standardCars:{{run.user}}",
+        "key": "uuid",
+        "start": {"at": {"tz": "Europe/London", "days": "run", "time": "10:00"}}
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/appointments",
+        "name": "/api/v1/appointments [race]",
+        "headers": {"Idempotency-Key": "{{key}}"},
+        "body": {
+          "customerId": "{{v.customerId}}",
+          "vehicleId": "{{v.vehicleId}}",
+          "dealershipId": "{{ref.dealerships.LONDON}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "startTime": "{{start}}"
+        }
+      }
+    },
+    {
+      "id": "RC-02",
+      "goal": "Idempotency race: the SAME request with the SAME Idempotency-Key from 10 users at once (a client retrying in parallel) → 10 x 201 and ONE appointment id. A unique-key violation must be turned into 'return the existing one', not 409/500.",
+      "verifies": ["DLD §5 idempotency", "Spec03 idempotency_key UNIQUE"],
+      "bind": {
+        "v": "pick:standardCars:0",
+        "start": {"at": {"tz": "Asia/Ho_Chi_Minh", "days": "run+1", "time": "09:00"}}
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/appointments",
+        "name": "/api/v1/appointments [race-idempotent]",
+        "headers": {"Idempotency-Key": "race-{{run.id}}"},
+        "body": {
+          "customerId": "{{v.customerId}}",
+          "vehicleId": "{{v.vehicleId}}",
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "startTime": "{{start}}"
+        }
+      }
+    },
+    {
+      "id": "RC-03",
+      "goal": "One car, many keys: the same vehicle booked 10 times at once with DIFFERENT keys at the hub, which has 6 free oil-change technicians and 8 bays → still exactly 1 x 201: the vehicle itself is a resource (DB-03).",
+      "verifies": ["Spec03 DB-03 ex_appointments_vehicle"],
+      "bind": {
+        "v": "pick:standardCars:1",
+        "key": "uuid",
+        "start": {"at": {"tz": "Asia/Ho_Chi_Minh", "days": "run+2", "time": "10:00"}}
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/appointments",
+        "name": "/api/v1/appointments [race-vehicle]",
+        "headers": {"Idempotency-Key": "{{key}}"},
+        "body": {
+          "customerId": "{{v.customerId}}",
+          "vehicleId": "{{v.vehicleId}}",
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "startTime": "{{start}}"
+        }
+      }
+    }
+  ]
+}

@@ -104,7 +104,11 @@ Spec: [`planing/Spec03.md`](planing/Spec03.md)
 - `seeding/`: 100 rows per table with tagged edge cases (time zones, DST, durations, capacity, lifecycle, outbox states).
 
 ## Phase 4 — Testing
-<!-- TODO -->
+Spec: [`planing/Spec06.md`](planing/Spec06.md)
+- Locust in Docker (`docker-compose.loadtest.yml`, `locustio/locust:2.46.7`), hits nginx on `edge` only; standalone runner + master/workers with UI.
+- Test data as JSON, two files per suite: `loadtest/input/` (request, goal, requirement) and `loadtest/expected/` (status, headers, body, latency, counts), joined by case id.
+- Profiles smoke / load / stress / spike / abuse / race; verdict JSON + exit code from `thresholds.json`; `verify/invariants.sql` proves no double booking in the DB.
+- Smoke passes today; other profiles are the executable contract for the booking / availability API.
 
 ## Phase 5 — Build for the Future
 <!-- TODO -->
