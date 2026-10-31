@@ -1,0 +1,70 @@
+{
+  "suite": "40-lifecycle",
+  "inputFile": "input/40-lifecycle.json",
+  "_doc": "Expected output per case id of the input file. A response that differs is a Locust failure (Spec06 §5).",
+  "cases": [
+    {
+      "id": "LC-01",
+      "goal": "Full life: book → read back (other replica, least_conn) → reschedule +1 day → cancel → cancel again is 409 → final state CANCELLED.",
+      "steps": [
+        {"id": "book", "expect": {"status": 201}},
+        {
+          "id": "read",
+          "expect": {
+            "status": 200,
+            "body": [
+              {"path": "id", "equals": "{{apptId}}"},
+              {"path": "status", "equals": "CONFIRMED"},
+              {"path": "startTime", "equals": "{{start}}"}
+            ]
+          }
+        },
+        {
+          "id": "reschedule",
+          "expect": {
+            "status": 200,
+            "body": [
+              {"path": "id", "equals": "{{apptId}}"},
+              {"path": "status", "equals": "CONFIRMED"},
+              {"path": "startTime", "equals": "{{moved}}"}
+            ]
+          }
+        },
+        {"id": "cancel", "expect": {"status": 200, "body": [{"path": "status", "equals": "CANCELLED"}]}},
+        {"id": "cancel-again", "expect": {"status": 409, "body": [{"path": "status", "equals": 409}]}},
+        {
+          "id": "read-cancelled",
+          "expect": {"status": 200, "body": [{"path": "status", "equals": "CANCELLED"}]}
+        }
+      ]
+    },
+    {
+      "id": "LC-02",
+      "goal": "A cancelled slot is free again: book, cancel, book the SAME vehicle at the SAME time with a new key → 201 (exclusion constraints ignore CANCELLED).",
+      "steps": [
+        {"id": "book", "expect": {"status": 201}},
+        {"id": "cancel", "expect": {"status": 200}},
+        {"id": "rebook", "expect": {"status": 201, "body": [{"path": "status", "equals": "CONFIRMED"}]}}
+      ]
+    },
+    {
+      "id": "LC-03",
+      "goal": "Dealership day list: confirmed and cancelled jobs of one local day at the hub, for the service desk.",
+      "expect": {
+        "status": 200,
+        "body": [
+          {
+            "path": "",
+            "type": "array",
+            "each": [{"path": "status", "oneOf": ["CONFIRMED", "CANCELLED", "COMPLETED"]}]
+          }
+        ]
+      }
+    },
+    {
+      "id": "LC-04",
+      "goal": "Unknown appointment id → 404 on read and on cancel (no 500 on a missing row).",
+      "steps": [{"id": "read", "expect": {"status": 404}}, {"id": "cancel", "expect": {"status": 404}}]
+    }
+  ]
+}

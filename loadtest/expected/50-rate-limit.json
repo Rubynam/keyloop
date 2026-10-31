@@ -1,0 +1,22 @@
+{
+  "suite": "50-rate-limit",
+  "inputFile": "input/50-rate-limit.json",
+  "_doc": "Expected output per case id of the input file. A response that differs is a Locust failure (Spec06 §5).",
+  "cases": [
+    {
+      "id": "RL-01",
+      "goal": "Burst from ONE client IP on the hot availability query → first requests 200, then 429 with Retry-After and a ProblemDetail body. Never 5xx, never a hang.",
+      "expect": {
+        "status": [200, 429],
+        "onStatus": {
+          "429": {
+            "headers": {"Retry-After": {"matches": "^\\d+$"}, "Content-Type": {"matches": "^application/problem\\+json"}},
+            "body": [{"path": "status", "equals": 429}],
+            "maxLatencyMs": 100
+          }
+        }
+      },
+      "aggregate": {"allowed": [200, 429], "atLeast": {"200": 1, "429": 1}}
+    }
+  ]
+}

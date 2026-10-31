@@ -1,0 +1,180 @@
+{
+  "suite": "40-lifecycle",
+  "goal": "Read-your-write and state changes under load (DLD §6, §9). An appointment the API just confirmed can be read back from ANY replica, moved, cancelled once, and a cancelled slot is free again.",
+  "precondition": "seeding/seed.sh. Uses days 361–600 so it never competes with 30-booking for the same vehicle and time.",
+  "expectedFile": "expected/40-lifecycle.json",
+  "_doc": "Input requests. Locust loads this file, binds {{tokens}}, sends each request, then checks it against expectedFile.",
+  "cases": [
+    {
+      "id": "LC-01",
+      "goal": "Full life: book → read back (other replica, least_conn) → reschedule +1 day → cancel → cancel again is 409 → final state CANCELLED.",
+      "verifies": ["DLD §6", "DLD §9 state machine", "Spec02 stateless replicas"],
+      "weight": 4,
+      "bind": {
+        "v": "pool:standardCars",
+        "key": "uuid",
+        "start": {
+          "slot": {
+            "tz": "Asia/Ho_Chi_Minh",
+            "days": [361, 480],
+            "open": "08:00",
+            "lastStart": "15:00",
+            "stepMinutes": 15
+          }
+        },
+        "moved": {"shift": {"from": "start", "minutes": 1440}}
+      },
+      "steps": [
+        {
+          "id": "book",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/appointments",
+            "name": "/api/v1/appointments",
+            "headers": {"Idempotency-Key": "{{key}}"},
+            "body": {
+              "customerId": "{{v.customerId}}",
+              "vehicleId": "{{v.vehicleId}}",
+              "dealershipId": "{{ref.dealerships.Q7}}",
+              "serviceTypeId": "{{ref.serviceTypes.DIAGNOSTICS}}",
+              "startTime": "{{start}}"
+            }
+          },
+          "save": {"apptId": "id"}
+        },
+        {
+          "id": "read",
+          "request": {"method": "GET", "path": "/api/v1/appointments/{{apptId}}", "name": "/api/v1/appointments/{id}"}
+        },
+        {
+          "id": "reschedule",
+          "request": {
+            "method": "PATCH",
+            "path": "/api/v1/appointments/{{apptId}}/reschedule",
+            "name": "/api/v1/appointments/{id}/reschedule",
+            "body": {"newStartTime": "{{moved}}"}
+          }
+        },
+        {
+          "id": "cancel",
+          "request": {
+            "method": "PATCH",
+            "path": "/api/v1/appointments/{{apptId}}/cancel",
+            "name": "/api/v1/appointments/{id}/cancel"
+          }
+        },
+        {
+          "id": "cancel-again",
+          "request": {
+            "method": "PATCH",
+            "path": "/api/v1/appointments/{{apptId}}/cancel",
+            "name": "/api/v1/appointments/{id}/cancel [again]"
+          }
+        },
+        {
+          "id": "read-cancelled",
+          "request": {"method": "GET", "path": "/api/v1/appointments/{{apptId}}", "name": "/api/v1/appointments/{id}"}
+        }
+      ]
+    },
+    {
+      "id": "LC-02",
+      "goal": "A cancelled slot is free again: book, cancel, book the SAME vehicle at the SAME time with a new key → 201 (exclusion constraints ignore CANCELLED).",
+      "verifies": ["Spec03 DB-01..03 WHERE status <> 'CANCELLED'", "D1 outbox → version bump"],
+      "weight": 2,
+      "bind": {
+        "v": "pool:standardCars",
+        "k1": "uuid",
+        "k2": "uuid",
+        "start": {
+          "slot": {
+            "tz": "Asia/Ho_Chi_Minh",
+            "days": [481, 600],
+            "open": "08:00",
+            "lastStart": "16:00",
+            "stepMinutes": 15
+          }
+        }
+      },
+      "steps": [
+        {
+          "id": "book",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/appointments",
+            "name": "/api/v1/appointments",
+            "headers": {"Idempotency-Key": "{{k1}}"},
+            "body": {
+              "customerId": "{{v.customerId}}",
+              "vehicleId": "{{v.vehicleId}}",
+              "dealershipId": "{{ref.dealerships.Q7}}",
+              "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+              "startTime": "{{start}}"
+            }
+          },
+          "save": {"apptId": "id"}
+        },
+        {
+          "id": "cancel",
+          "request": {
+            "method": "PATCH",
+            "path": "/api/v1/appointments/{{apptId}}/cancel",
+            "name": "/api/v1/appointments/{id}/cancel"
+          }
+        },
+        {
+          "id": "rebook",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/appointments",
+            "name": "/api/v1/appointments",
+            "headers": {"Idempotency-Key": "{{k2}}"},
+            "body": {
+              "customerId": "{{v.customerId}}",
+              "vehicleId": "{{v.vehicleId}}",
+              "dealershipId": "{{ref.dealerships.Q7}}",
+              "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+              "startTime": "{{start}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "LC-03",
+      "goal": "Dealership day list: confirmed and cancelled jobs of one local day at the hub, for the service desk.",
+      "verifies": ["DLD §3 GET /appointments?dealershipId=&date="],
+      "weight": 3,
+      "bind": {"day": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": [1, 14]}}},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/appointments",
+        "name": "/api/v1/appointments?dealershipId&date",
+        "query": {"dealershipId": "{{ref.dealerships.Q7}}", "date": "{{day}}"}
+      }
+    },
+    {
+      "id": "LC-04",
+      "goal": "Unknown appointment id → 404 on read and on cancel (no 500 on a missing row).",
+      "verifies": ["DLD §3"],
+      "steps": [
+        {
+          "id": "read",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/appointments/00000000-0000-7000-8000-000000000000",
+            "name": "/api/v1/appointments/{id} [unknown]"
+          }
+        },
+        {
+          "id": "cancel",
+          "request": {
+            "method": "PATCH",
+            "path": "/api/v1/appointments/00000000-0000-7000-8000-000000000000/cancel",
+            "name": "/api/v1/appointments/{id}/cancel [unknown]"
+          }
+        }
+      ]
+    }
+  ]
+}
