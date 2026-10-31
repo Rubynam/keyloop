@@ -16,20 +16,29 @@ sequenceDiagram
         AVS->>AVS: validate range (max 14 days)
         loop each date in range
             AVS->>CA: get(dealer, serviceType, vehicleTypeId, date)
-            CA->>R: GET avail:ver:dealer:date
+            CA->>R: GET avail:ver:dealer:date (missing = 0)
             Note over CA,R: version is read BEFORE querying PostgreSQL
             CA->>R: GET avail:dealer:date:v{ver}:serviceType:vehicleTypeId
             alt cache hit
-                R-->>CA: slots
-            else cache miss
-                CA->>R: SET lock NX PX (single-flight)
+                R-->>CA: slots (full day)
+            else cache miss, lock acquired
+                CA->>R: SET avail:lock:dealer:date:v{ver}:serviceType:vehicleTypeId token NX PX 2s
                 CA->>PG: load bays that take the vehicle type, qualified technicians, active appointments, business hours
                 PG-->>CA: rows
-                CA->>CA: compute free slots
-                CA->>R: SET key slots EX ttl+jitter
+                CA->>CA: compute free slots (full day, no now cut)
+                CA->>R: SET key slots EX 30s + random padding 0–30s
+                CA->>R: Lua: if GET lock == token then DEL lock
+            else cache miss, lock held by another request
+                loop poll cache until found or lock-wait (100ms, config)
+                    CA->>R: GET avail:dealer:date:v{ver}:serviceType:vehicleTypeId
+                end
+                opt still missing after lock-wait
+                    CA->>PG: compute directly (do not write cache)
+                end
             else Redis unavailable
                 CA->>PG: compute directly (fail-open)
             end
+            CA->>CA: drop slots with start < now
             CA-->>AVS: slots for date
         end
         AVS-->>C: 200 OK (slots)
