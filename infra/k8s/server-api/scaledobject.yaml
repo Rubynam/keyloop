@@ -1,0 +1,56 @@
+# X axis for server-api (docs/diagrams/hld/05-scaling-xy.svg).
+# KEDA creates and owns the HPA from this object; do not add a separate
+# HorizontalPodAutoscaler for the same Deployment, the two would fight.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: server-api
+  labels:
+    app.kubernetes.io/name: server-api
+spec:
+  scaleTargetRef:
+    name: server-api
+  minReplicaCount: 2
+  maxReplicaCount: 13
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          # At most +60% per minute, rounded up: from the peak floor of 3
+          # this is the Fibonacci walk 3, 5, 8, 13
+          policies:
+            - type: Percent
+              value: 60
+              periodSeconds: 60
+        scaleDown:
+          # Ride out short dips before giving pods back, then one at a time
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 60
+  # The HPA takes the highest replica count any trigger asks for, so CPU and
+  # memory are an OR, and the cron windows act as a raised floor
+  triggers:
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "60"
+    - type: memory
+      metricType: Utilization
+      metadata:
+        value: "60"
+    # Peak windows: hold at least 3 pods so scale-up starts on the Fibonacci walk
+    - type: cron
+      metadata:
+        timezone: Asia/Ho_Chi_Minh
+        start: "0 7 * * *"
+        end: "0 10 * * *"
+        desiredReplicas: "3"
+    - type: cron
+      metadata:
+        timezone: Asia/Ho_Chi_Minh
+        start: "0 16 * * *"
+        end: "0 19 * * *"
+        desiredReplicas: "3"

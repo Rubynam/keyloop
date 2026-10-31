@@ -1,7 +1,7 @@
 package com.keyloop.scheduler.batch.job;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.core.step.tasklet.Tasklet;
@@ -12,17 +12,12 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /** Touches Postgres and Redis once, failing the step if either is unreachable. */
+@Slf4j
+@RequiredArgsConstructor
 public class HeartbeatTasklet implements Tasklet {
-
-    private static final Logger log = LoggerFactory.getLogger(HeartbeatTasklet.class);
 
     private final JdbcTemplate jdbcTemplate;
     private final StringRedisTemplate redisTemplate;
-
-    public HeartbeatTasklet(JdbcTemplate jdbcTemplate, StringRedisTemplate redisTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
-        this.redisTemplate = redisTemplate;
-    }
 
     @Override
     public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {

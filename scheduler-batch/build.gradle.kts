@@ -3,6 +3,7 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":common-logging"))
     // JDBC-backed JobRepository (metadata tables in the "batch" schema)
     implementation("org.springframework.boot:spring-boot-starter-batch-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")

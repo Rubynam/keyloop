@@ -2,9 +2,8 @@ package com.keyloop.scheduler.batch.schedule;
 
 import java.time.Instant;
 
+import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
@@ -15,11 +14,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /** Launches Batch jobs on a schedule; jobs never auto-run at startup (Spec01 BAT-04). */
+@Slf4j
 @Component
 @ConditionalOnProperty(name = "scheduler.jobs.heartbeat.enabled", havingValue = "true", matchIfMissing = true)
 public class JobScheduler {
-
-    private static final Logger log = LoggerFactory.getLogger(JobScheduler.class);
 
     private final JobOperator jobOperator;
     private final Job heartbeatJob;

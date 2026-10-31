@@ -42,8 +42,3 @@ management:
       group:
         readiness:
           include: readinessState,db,redis
-
-logging:
-  pattern:
-    # requestId comes from nginx's X-Request-Id (RequestIdFilter)
-    level: "%5p [%X{requestId:-}]"

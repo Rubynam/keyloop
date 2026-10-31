@@ -8,6 +8,10 @@ x-app-env: &app-env
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scheduler}
   REDIS_HOST: redis
   REDIS_PORT: 6379
+  # Log4j2 file output; ./logs on the host (see volumes below)
+  LOG_PATH: /app/logs
+  # JVM default zone: log timestamps and @Scheduled cron (images default to UTC)
+  TZ: ${TZ:-Asia/Ho_Chi_Minh}
 
 services:
   postgres:
@@ -51,6 +55,8 @@ services:
     image: keyloop/server-api:local
     environment:
       <<: *app-env
+    volumes:
+      - ./logs:/app/logs
     # No host port: replicas are reached only through nginx (Spec02 API-10).
     # Scale with: docker compose up -d --scale server-api=3 --no-recreate
     deploy:
@@ -75,6 +81,8 @@ services:
     environment:
       <<: *app-env
       HEARTBEAT_CRON: ${HEARTBEAT_CRON:-*/30 * * * * *}
+    volumes:
+      - ./logs:/app/logs
     ports:
       - "${BATCH_PORT:-8081}:8081"
     networks: [data-net]

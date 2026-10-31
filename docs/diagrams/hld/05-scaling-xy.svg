@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1090" viewBox="0 0 1200 1090" role="img" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <title>Keyloop scheduler: two-axis scaling model</title>
+  <desc>X axis adds instances (HPA with peak windows and Fibonacci steps), Y axis adds CPU/RAM, for server-api and Postgres; the bottom band shows business scaling through the admin tool.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      .title { font-size: 18px; font-weight: 600; fill: #2C2C2A; }
+      .note  { font-size: 12px; fill: #5F5E5A; }
+      .axis  { font-size: 12px; fill: #444441; font-weight: 500; }
+      .th    { font-size: 14px; font-weight: 600; }
+      .ts    { font-size: 12px; }
+      .line  { stroke: #888780; stroke-width: 1.2; fill: none; }
+      .base rect { fill: #F1EFE8; stroke: #5F5E5A; } .base .th { fill: #2C2C2A; } .base .ts { fill: #5F5E5A; }
+      .x rect { fill: #E1F5EE; stroke: #0F6E56; }    .x .th { fill: #085041; }    .x .ts { fill: #0F6E56; }
+      .y rect { fill: #EEEDFE; stroke: #534AB7; }    .y .th { fill: #3C3489; }    .y .ts { fill: #534AB7; }
+      .biz rect { fill: #FAECE7; stroke: #993C1D; }  .biz .th { fill: #712B13; }  .biz .ts { fill: #993C1D; }
+      rect { stroke-width: 0.8; }
+      text { dominant-baseline: central; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="1090" fill="#FFFFFF"/>
+
+  <!-- ===== Panel A: server-api ===== -->
+  <rect x="30" y="30" width="550" height="430" rx="14" fill="none" stroke="#D3D1C7"/>
+  <text class="title" x="50" y="58">server-api</text>
+  <text class="note" x="50" y="80">Today: docker compose, 2 replicas behind nginx</text>
+
+  <line class="line" x1="90" y1="420" x2="90" y2="104" marker-end="url(#arrow)"/>
+  <line class="line" x1="90" y1="420" x2="562" y2="420" marker-end="url(#arrow)"/>
+  <text class="axis" x="100" y="110">Y axis: CPU / RAM per pod</text>
+  <text class="axis" x="560" y="440" text-anchor="end">X axis: pod count (k8s HPA)</text>
+
+  <g class="base"><rect x="105" y="350" width="100" height="52" rx="8"/>
+    <text class="th" x="155" y="367" text-anchor="middle">pod 1</text>
+    <text class="ts" x="155" y="386" text-anchor="middle">1 CPU · 1 GiB</text></g>
+  <g class="x"><rect x="220" y="350" width="100" height="52" rx="8"/>
+    <text class="th" x="270" y="367" text-anchor="middle">pod 2</text>
+    <text class="ts" x="270" y="386" text-anchor="middle">1 CPU · 1 GiB</text></g>
+  <g class="x"><rect x="335" y="350" width="100" height="52" rx="8"/>
+    <text class="th" x="385" y="367" text-anchor="middle">pod 3</text>
+    <text class="ts" x="385" y="386" text-anchor="middle">1 CPU · 1 GiB</text></g>
+  <g class="x"><rect x="450" y="350" width="100" height="52" rx="8"/>
+    <text class="th" x="500" y="367" text-anchor="middle">pod N</text>
+    <text class="ts" x="500" y="386" text-anchor="middle">min 2, max 13</text></g>
+
+  <g class="y"><rect x="105" y="270" width="100" height="52" rx="8"/>
+    <text class="th" x="155" y="287" text-anchor="middle">pod 1</text>
+    <text class="ts" x="155" y="306" text-anchor="middle">2 CPU · 2 GiB</text></g>
+  <g class="y"><rect x="105" y="190" width="100" height="52" rx="8"/>
+    <text class="th" x="155" y="207" text-anchor="middle">pod 1</text>
+    <text class="ts" x="155" y="226" text-anchor="middle">4 CPU · 4 GiB</text></g>
+  <line class="line" x1="155" y1="348" x2="155" y2="326" marker-end="url(#arrow)"/>
+  <line class="line" x1="155" y1="268" x2="155" y2="246" marker-end="url(#arrow)"/>
+
+  <g class="y"><rect x="225" y="190" width="325" height="52" rx="8"/>
+    <text class="th" x="387" y="207" text-anchor="middle">Y: VPA raises requests / limits</text>
+    <text class="ts" x="387" y="226" text-anchor="middle">JVM MaxRAMPercentage=75 · capped by node size</text></g>
+  <g class="x"><rect x="225" y="270" width="325" height="52" rx="8"/>
+    <text class="th" x="387" y="287" text-anchor="middle">X: HPA on CPU or memory above 60%</text>
+    <text class="ts" x="387" y="306" text-anchor="middle">Fibonacci steps in peak windows, see policy below</text></g>
+
+  <!-- ===== Panel B: PostgreSQL ===== -->
+  <rect x="620" y="30" width="550" height="430" rx="14" fill="none" stroke="#D3D1C7"/>
+  <text class="title" x="640" y="58">PostgreSQL 18</text>
+  <text class="note" x="640" y="80">Today: 1 node · all writes go to the primary</text>
+
+  <line class="line" x1="680" y1="420" x2="680" y2="104" marker-end="url(#arrow)"/>
+  <line class="line" x1="680" y1="420" x2="1152" y2="420" marker-end="url(#arrow)"/>
+  <text class="axis" x="690" y="110">Y axis: primary CPU / RAM / IOPS</text>
+  <text class="axis" x="1150" y="440" text-anchor="end">X axis: more nodes (replica, shard)</text>
+
+  <g class="base"><rect x="695" y="350" width="100" height="52" rx="8"/>
+    <text class="th" x="745" y="367" text-anchor="middle">primary</text>
+    <text class="ts" x="745" y="386" text-anchor="middle">2 CPU · 4 GiB</text></g>
+  <g class="x"><rect x="810" y="350" width="100" height="52" rx="8"/>
+    <text class="th" x="860" y="367" text-anchor="middle">replica 1</text>
+    <text class="ts" x="860" y="386" text-anchor="middle">slot reads</text></g>
+  <g class="x"><rect x="925" y="350" width="100" height="52" rx="8"/>
+    <text class="th" x="975" y="367" text-anchor="middle">replica 2</text>
+    <text class="ts" x="975" y="386" text-anchor="middle">batch, reports</text></g>
+  <g class="x"><rect x="1040" y="350" width="100" height="52" rx="8"/>
+    <text class="th" x="1090" y="367" text-anchor="middle">shard N</text>
+    <text class="ts" x="1090" y="386" text-anchor="middle">by dealership</text></g>
+
+  <g class="y"><rect x="695" y="270" width="100" height="52" rx="8"/>
+    <text class="th" x="745" y="287" text-anchor="middle">primary</text>
+    <text class="ts" x="745" y="306" text-anchor="middle">4 CPU · 16 GiB</text></g>
+  <g class="y"><rect x="695" y="190" width="100" height="52" rx="8"/>
+    <text class="th" x="745" y="207" text-anchor="middle">primary</text>
+    <text class="ts" x="745" y="226" text-anchor="middle">8 CPU · 32 GiB</text></g>
+  <line class="line" x1="745" y1="348" x2="745" y2="326" marker-end="url(#arrow)"/>
+  <line class="line" x1="745" y1="268" x2="745" y2="246" marker-end="url(#arrow)"/>
+
+  <g class="y"><rect x="815" y="190" width="325" height="52" rx="8"/>
+    <text class="th" x="977" y="207" text-anchor="middle">Y: scale this first, simplest</text>
+    <text class="ts" x="977" y="226" text-anchor="middle">shared_buffers 25% RAM · NVMe · PgBouncer</text></g>
+  <g class="x"><rect x="815" y="270" width="325" height="52" rx="8"/>
+    <text class="th" x="977" y="287" text-anchor="middle">X: read-only replicas, 1 writer</text>
+    <text class="ts" x="977" y="306" text-anchor="middle">EXCLUDE gist anti double booking needs 1 node</text></g>
+
+  <!-- ===== Band B: server-api HPA policy ===== -->
+  <rect x="30" y="490" width="1140" height="290" rx="14" fill="none" stroke="#D3D1C7"/>
+  <text class="title" x="50" y="518">server-api HPA policy: peak windows and Fibonacci steps</text>
+
+  <g class="x"><rect x="50" y="545" width="360" height="52" rx="8"/>
+    <text class="th" x="230" y="562" text-anchor="middle">Trigger: CPU or memory above 60%</text>
+    <text class="ts" x="230" y="581" text-anchor="middle">Average of pod requests, either metric fires</text></g>
+  <g class="x"><rect x="50" y="611" width="360" height="52" rx="8"/>
+    <text class="th" x="230" y="628" text-anchor="middle">Peak windows: 07:00-10:00, 16:00-19:00</text>
+    <text class="ts" x="230" y="647" text-anchor="middle">KEDA cron raises minReplicas from 2 to 3</text></g>
+  <g class="x"><rect x="50" y="677" width="360" height="52" rx="8"/>
+    <text class="th" x="230" y="694" text-anchor="middle">Stabilization: up 0 s, down 300 s</text>
+    <text class="ts" x="230" y="713" text-anchor="middle">One step up per 60 s, one pod down per 60 s</text></g>
+
+  <text class="axis" x="1140" y="545" text-anchor="end">Percent policy 60% per 60 s, rounded up, gives Fibonacci 3, 5, 8, 13</text>
+  <line x1="470" y1="575" x2="1140" y2="575" stroke="#888780" stroke-width="1" stroke-dasharray="5 4"/>
+  <text class="note" x="1140" y="565" text-anchor="end">maxReplicas 13</text>
+  <line class="line" x1="470" y1="735" x2="470" y2="560" marker-end="url(#arrow)"/>
+  <line class="line" x1="470" y1="735" x2="1150" y2="735"/>
+  <text class="note" x="480" y="566">replicas</text>
+
+  <g class="base"><rect x="500" y="711" width="90" height="24" rx="4"/></g>
+  <g class="x"><rect x="620" y="699" width="90" height="36" rx="4"/></g>
+  <g class="x"><rect x="740" y="675" width="90" height="60" rx="4"/></g>
+  <g class="x"><rect x="860" y="639" width="90" height="96" rx="4"/></g>
+  <g class="x"><rect x="980" y="579" width="90" height="156" rx="4"/></g>
+  <text class="th" x="545" y="700" text-anchor="middle" fill="#2C2C2A">2</text>
+  <text class="th" x="665" y="688" text-anchor="middle" fill="#085041">3</text>
+  <text class="th" x="785" y="664" text-anchor="middle" fill="#085041">5</text>
+  <text class="th" x="905" y="628" text-anchor="middle" fill="#085041">8</text>
+  <text class="th" x="1025" y="595" text-anchor="middle" fill="#085041">13</text>
+  <text class="note" x="545" y="755" text-anchor="middle">off-peak</text>
+  <text class="note" x="665" y="755" text-anchor="middle">peak start</text>
+  <text class="note" x="785" y="755" text-anchor="middle">plus 60 s</text>
+  <text class="note" x="905" y="755" text-anchor="middle">plus 120 s</text>
+  <text class="note" x="1025" y="755" text-anchor="middle">plus 180 s</text>
+
+  <!-- ===== Band C: business scaling ===== -->
+  <g transform="translate(0,310)">
+  <rect x="30" y="490" width="1140" height="260" rx="14" fill="none" stroke="#D3D1C7"/>
+  <text class="title" x="50" y="518">Business scaling: admin tool, no deploy needed</text>
+
+  <g class="base"><rect x="60" y="613" width="180" height="56" rx="8"/>
+    <text class="th" x="150" y="631" text-anchor="middle">Admin tool</text>
+    <text class="ts" x="150" y="651" text-anchor="middle">CRUD on master data</text></g>
+
+  <path class="line" d="M240 641 H280 V571 H318" marker-end="url(#arrow)"/>
+  <path class="line" d="M240 641 H318" marker-end="url(#arrow)"/>
+  <path class="line" d="M280 641 V711 H318" marker-end="url(#arrow)"/>
+
+  <g class="biz"><rect x="320" y="545" width="440" height="52" rx="8"/>
+    <text class="th" x="540" y="562" text-anchor="middle">vehicle_types: add new vehicle types</text>
+    <text class="ts" x="540" y="581" text-anchor="middle">One INSERT (EV, HYDROGEN…), then link to bays / technicians</text></g>
+  <g class="biz"><rect x="320" y="615" width="440" height="52" rx="8"/>
+    <text class="th" x="540" y="632" text-anchor="middle">technicians: onboard / offboard</text>
+    <text class="ts" x="540" y="651" text-anchor="middle">Onboard: skills + vehicle types · Offboard: active=false, reassign jobs</text></g>
+  <g class="biz"><rect x="320" y="685" width="440" height="52" rx="8"/>
+    <text class="th" x="540" y="702" text-anchor="middle">service_bays: add bays + location (V3)</text>
+    <text class="ts" x="540" y="721" text-anchor="middle">location TEXT: "Floor 2, zone B" · grow the workshop zone by zone</text></g>
+
+  <path class="line" d="M760 571 H795 V641" marker-end="url(#arrow)"/>
+  <path class="line" d="M760 641 H828" marker-end="url(#arrow)"/>
+  <path class="line" d="M760 711 H795 V641" />
+
+  <g class="x"><rect x="830" y="597" width="320" height="88" rx="8"/>
+    <text class="th" x="990" y="615" text-anchor="middle">Booking capacity</text>
+    <text class="ts" x="990" y="635" text-anchor="middle">bay union technician</text>
+    <text class="ts" x="990" y="651" text-anchor="middle">union vehicle type union opening hours</text>
+    <text class="ts" x="990" y="669" text-anchor="middle">add any of them for more slots and more revenue</text></g>
+  </g>
+</svg>

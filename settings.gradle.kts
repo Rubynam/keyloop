@@ -5,6 +5,7 @@ plugins {
 
 rootProject.name = "keyloop-scheduler"
 
+include("common-logging") // shared Log4j2 config + method logging aspect
 include("server-api")   // PR01 — REST API, owns the DB schema (Flyway)
 include("scheduler-batch") // PR02 — Spring Batch worker jobs
 

@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server-api
+  labels:
+    app.kubernetes.io/name: server-api
+spec:
+  # No replicas field: the KEDA ScaledObject owns the count (min 2, max 13)
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: server-api
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: server-api
+    spec:
+      # Spring graceful shutdown (20 s) plus the preStop sleep must fit inside this
+      terminationGracePeriodSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: server-api
+      containers:
+        - name: server-api
+          image: keyloop/server-api
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: DB_HOST
+              value: postgres
+            - name: DB_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              value: scheduler
+            - name: REDIS_HOST
+              value: redis
+            - name: REDIS_PORT
+              value: "6379"
+            - name: LOG_PATH
+              value: /app/logs
+            # 1 CPU makes the JVM pick SerialGC; G1 with a periodic GC hands
+            # unused heap back to the OS, so the memory trigger can scale down
+            - name: JAVA_OPTS
+              value: "-XX:MaxRAMPercentage=75 -XX:+UseG1GC -XX:G1PeriodicGCInterval=30000"
+          # POSTGRES_USER / POSTGRES_PASSWORD; create the Secret out of band
+          envFrom:
+            - secretRef:
+                name: server-api-db
+          # The HPA triggers are a percentage of these requests (Y axis: raise them)
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            # No CPU limit: throttling would hide load from the CPU trigger
+            limits:
+              memory: 1Gi
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            # Let the Service drop this pod's endpoint before Spring stops accepting
+            preStop:
+              sleep:
+                seconds: 5
+          volumeMounts:
+            - name: logs
+              mountPath: /app/logs
+      volumes:
+        - name: logs
+          emptyDir: {}

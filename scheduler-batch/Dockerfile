@@ -9,10 +9,12 @@ WORKDIR /workspace
 # Build scripts first: this layer changes rarely
 COPY gradlew settings.gradle.kts build.gradle.kts ./
 COPY gradle gradle
+COPY common-logging/build.gradle.kts common-logging/
 COPY server-api/build.gradle.kts server-api/
 COPY scheduler-batch/build.gradle.kts scheduler-batch/
 
 # Sources of this module only — edits to the other module do not bust the cache
+COPY common-logging/src common-logging/src
 COPY scheduler-batch/src scheduler-batch/src
 
 # Tests run in './gradlew build', not in the image build
@@ -26,6 +28,8 @@ RUN java -Djarmode=tools -jar scheduler-batch/build/libs/scheduler-batch.jar ext
 FROM eclipse-temurin:25-jre-alpine
 RUN addgroup -S app && adduser -S app -G app
 WORKDIR /app
+# Log4j2 writes here (LOG_PATH); docker compose bind-mounts ./logs over it
+RUN mkdir -p /app/logs && chown app:app /app/logs
 
 COPY --from=build /extracted/dependencies/ ./
 COPY --from=build /extracted/spring-boot-loader/ ./
