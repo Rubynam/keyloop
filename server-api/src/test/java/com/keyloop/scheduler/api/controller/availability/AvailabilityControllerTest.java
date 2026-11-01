@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.availability;
+package com.keyloop.scheduler.api.controller.availability;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
@@ -16,9 +16,12 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import com.keyloop.scheduler.api.availability.AvailabilityResponse.Day;
-import com.keyloop.scheduler.api.availability.AvailabilityResponse.Slot;
+import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse;
+import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse.Day;
+import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse.Slot;
 import com.keyloop.scheduler.api.exception.NotFoundException;
+import com.keyloop.scheduler.api.exception.availability.InvalidRangeException;
+import com.keyloop.scheduler.api.service.availability.AvailabilityService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;

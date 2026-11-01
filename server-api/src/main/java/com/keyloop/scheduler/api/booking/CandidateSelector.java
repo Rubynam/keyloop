@@ -13,12 +13,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import com.keyloop.scheduler.api.availability.AvailabilityRepository;
-import com.keyloop.scheduler.api.availability.AvailabilityRepository.Booking;
-import com.keyloop.scheduler.api.availability.AvailabilityRepository.Dealership;
 import com.keyloop.scheduler.api.booking.CandidateResult.Pair;
 import com.keyloop.scheduler.api.constant.ErrorMessages;
 import com.keyloop.scheduler.api.exception.NotFoundException;
+import com.keyloop.scheduler.api.model.availability.Booking;
+import com.keyloop.scheduler.api.model.availability.Dealership;
+import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
 import org.springframework.stereotype.Service;
 
 /**

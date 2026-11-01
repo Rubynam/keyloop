@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.availability;
+package com.keyloop.scheduler.api.cache.availability.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import com.keyloop.scheduler.api.constant.availability.AvailabilityConstants;
 import com.keyloop.scheduler.api.support.Fixtures;
 import com.keyloop.scheduler.api.support.IntegrationTest;
 import com.keyloop.scheduler.api.support.LogCapture;
@@ -98,7 +99,7 @@ class AvailabilityFailOpenIT extends IntegrationTest {
 
         redisContainer.stop();
 
-        try (LogCapture log = LogCapture.of(AvailabilityCache.class)) {
+        try (LogCapture log = LogCapture.of(RedisAvailabilityCache.class)) {
             HttpResponse<String> response = get();
 
             assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
@@ -106,7 +107,7 @@ class AvailabilityFailOpenIT extends IntegrationTest {
             assertThat(log.lines()).anySatisfy(line ->
                     assertThat(line).startsWith("WARN Availability cache unavailable, reading from PostgreSQL"));
         }
-        assertThat(events.events).contains(AvailabilityCache.FAIL_OPEN_EVENT);
+        assertThat(events.events).contains(AvailabilityConstants.FAIL_OPEN_EVENT);
     }
 
     @Test

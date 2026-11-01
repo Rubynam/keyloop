@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.availability;
+package com.keyloop.scheduler.api.repository.availability.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -11,8 +11,14 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-import com.keyloop.scheduler.api.availability.AvailabilityResponse.Slot;
+import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse;
+import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse.Slot;
+import com.keyloop.scheduler.api.model.availability.Booking;
+import com.keyloop.scheduler.api.model.availability.Dealership;
+import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
+import com.keyloop.scheduler.api.service.availability.impl.AvailabilityServiceImpl;
 import com.keyloop.scheduler.api.support.IntegrationTest;
+import com.keyloop.scheduler.api.support.PassThroughAvailabilityCache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -80,9 +86,9 @@ class AvailabilityRepositoryIT extends IntegrationTest {
     @Test
     void repositoryReadsHoursAndSkipsCancelledBookings() {
         assertThat(repository.findDealership(dealer)).get()
-                .isEqualTo(new AvailabilityRepository.Dealership("UTC", 0, 1440));
+                .isEqualTo(new Dealership("UTC", 0, 1440));
 
-        List<AvailabilityRepository.Booking> bookings = repository.findBookings(dealer, List.of(fittingBay),
+        List<Booking> bookings = repository.findBookings(dealer, List.of(fittingBay),
                 List.of(qualifiedTech), Instant.parse(DAY + "T00:00:00Z"), Instant.parse(DAY.plusDays(1) + "T00:00:00Z"));
         assertThat(bookings).singleElement().satisfies(b -> {
             assertThat(b.start()).isEqualTo(Instant.parse(DAY + "T09:00:00Z"));
@@ -96,12 +102,12 @@ class AvailabilityRepositoryIT extends IntegrationTest {
                 + " VALUES ('IT odd', 'UTC', '08:00:30', '16:59:30') RETURNING id");
 
         assertThat(repository.findDealership(odd)).get()
-                .isEqualTo(new AvailabilityRepository.Dealership("UTC", 8 * 60 + 1, 16 * 60 + 59));
+                .isEqualTo(new Dealership("UTC", 8 * 60 + 1, 16 * 60 + 59));
     }
 
     @Test
     void serviceBlocksConfirmedOffersCancelledBackToBackAndMidnightEnd() {
-        AvailabilityResponse response = new AvailabilityService(repository, LONG_AGO)
+        AvailabilityResponse response = new AvailabilityServiceImpl(repository, new PassThroughAvailabilityCache(), LONG_AGO)
                 .find(dealer, service, vehicleType, DAY, DAY);
 
         assertThat(response.timezone()).isEqualTo("UTC");

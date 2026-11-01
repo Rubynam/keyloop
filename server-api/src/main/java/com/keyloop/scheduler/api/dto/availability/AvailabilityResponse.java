@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.availability;
+package com.keyloop.scheduler.api.dto.availability;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;

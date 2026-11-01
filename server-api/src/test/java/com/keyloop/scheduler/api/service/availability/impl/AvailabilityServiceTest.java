@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.availability;
+package com.keyloop.scheduler.api.service.availability.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -17,8 +17,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import com.keyloop.scheduler.api.availability.AvailabilityRepository.Booking;
-import com.keyloop.scheduler.api.availability.AvailabilityRepository.Dealership;
+import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse;
+import com.keyloop.scheduler.api.exception.availability.InvalidRangeException;
+import com.keyloop.scheduler.api.model.availability.Booking;
+import com.keyloop.scheduler.api.model.availability.Dealership;
+import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
+import com.keyloop.scheduler.api.support.PassThroughAvailabilityCache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -59,7 +63,7 @@ class AvailabilityServiceTest {
     }
 
     private List<String> starts(Clock clock) {
-        AvailabilityResponse response = new AvailabilityService(repository, clock).find(DEALER, SERVICE, VEHICLE, DAY, DAY);
+        AvailabilityResponse response = new AvailabilityServiceImpl(repository, new PassThroughAvailabilityCache(), clock).find(DEALER, SERVICE, VEHICLE, DAY, DAY);
         return response.days().getFirst().slots().stream().map(s -> s.start().toLocalTime().toString()).toList();
     }
 
@@ -121,30 +125,30 @@ class AvailabilityServiceTest {
 
     @Test
     void fourteenDaysInclusiveIsAllowed() {
-        assertThatCode(() -> AvailabilityService.validateRange(FROM, FROM.plusDays(13))).doesNotThrowAnyException();
-        assertThatCode(() -> AvailabilityService.validateRange(FROM, FROM)).doesNotThrowAnyException();
+        assertThatCode(() -> AvailabilityServiceImpl.validateRange(FROM, FROM.plusDays(13))).doesNotThrowAnyException();
+        assertThatCode(() -> AvailabilityServiceImpl.validateRange(FROM, FROM)).doesNotThrowAnyException();
     }
 
     @Test
     void fifteenDaysIsRejected() {
-        assertThatThrownBy(() -> AvailabilityService.validateRange(FROM, FROM.plusDays(14)))
+        assertThatThrownBy(() -> AvailabilityServiceImpl.validateRange(FROM, FROM.plusDays(14)))
                 .isInstanceOf(InvalidRangeException.class);
     }
 
     @Test
     void toBeforeFromIsRejected() {
-        assertThatThrownBy(() -> AvailabilityService.validateRange(FROM, FROM.minusDays(1)))
+        assertThatThrownBy(() -> AvailabilityServiceImpl.validateRange(FROM, FROM.minusDays(1)))
                 .isInstanceOf(InvalidRangeException.class);
     }
 
     @Test
     void extremeDatesAreRejectedAsBadRange() {
-        assertThatThrownBy(() -> new AvailabilityService(repository, LONG_AGO)
+        assertThatThrownBy(() -> new AvailabilityServiceImpl(repository, new PassThroughAvailabilityCache(), LONG_AGO)
                 .find(DEALER, SERVICE, VEHICLE, LocalDate.MAX, LocalDate.MAX))
                 .isInstanceOf(InvalidRangeException.class);
-        assertThatThrownBy(() -> AvailabilityService.validateRange(LocalDate.MIN, LocalDate.MIN))
+        assertThatThrownBy(() -> AvailabilityServiceImpl.validateRange(LocalDate.MIN, LocalDate.MIN))
                 .isInstanceOf(InvalidRangeException.class);
-        assertThatCode(() -> AvailabilityService.validateRange(LocalDate.of(9999, 12, 31), LocalDate.of(9999, 12, 31)))
+        assertThatCode(() -> AvailabilityServiceImpl.validateRange(LocalDate.of(9999, 12, 31), LocalDate.of(9999, 12, 31)))
                 .doesNotThrowAnyException();
     }
 }

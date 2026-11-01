@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.availability;
+package com.keyloop.scheduler.api.cache.availability.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -24,6 +24,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
 import com.keyloop.scheduler.api.support.Fixtures;
 import com.keyloop.scheduler.api.support.IntegrationTest;
 import com.keyloop.scheduler.api.support.MutableClock;
@@ -122,7 +123,7 @@ class AvailabilityCacheIT extends IntegrationTest {
     void cachedValueIsTheFullDayWithTtlPlusPadding() throws Exception {
         get();
 
-        String key = AvailabilityCache.slotsKey(dealer, DAY, 0, service, vehicleType);
+        String key = RedisAvailabilityCache.slotsKey(dealer, DAY, 0, service, vehicleType);
         JsonNode cached = json.readTree(redis.opsForValue().get(key));
         assertThat(cached).hasSize(33);
         assertThat(cached.get(0).get("start").asString()).isEqualTo("2030-01-07T08:00:00Z");
@@ -136,10 +137,10 @@ class AvailabilityCacheIT extends IntegrationTest {
         book("09:00", "10:00");
 
         // What the relay does for the AppointmentBooked event of that day (scheduler-batch OutboxRelayIT)
-        redis.opsForValue().increment(AvailabilityCache.versionKey(dealer, DAY));
+        redis.opsForValue().increment(RedisAvailabilityCache.versionKey(dealer, DAY));
 
         assertThat(starts(get())).contains("08:00", "10:00").doesNotContain("08:15", "09:00", "09:45");
-        assertThat(redis.hasKey(AvailabilityCache.slotsKey(dealer, DAY, 1, service, vehicleType))).isTrue();
+        assertThat(redis.hasKey(RedisAvailabilityCache.slotsKey(dealer, DAY, 1, service, vehicleType))).isTrue();
     }
 
     @Test
@@ -168,7 +169,7 @@ class AvailabilityCacheIT extends IntegrationTest {
 
     @Test
     void waiterThatTimesOutComputesWithoutWritingTheCache() throws Exception {
-        String lock = AvailabilityCache.lockKey(dealer, DAY, 0, service, vehicleType);
+        String lock = RedisAvailabilityCache.lockKey(dealer, DAY, 0, service, vehicleType);
         redis.opsForValue().set(lock, "another-request", Duration.ofSeconds(30));
 
         long began = System.nanoTime();
@@ -177,28 +178,28 @@ class AvailabilityCacheIT extends IntegrationTest {
         assertThat(Duration.ofNanos(System.nanoTime() - began)).isGreaterThanOrEqualTo(Duration.ofSeconds(2));
         assertThat(starts(body)).hasSize(33);
         verify(repository, times(1)).findFittingBayIds(dealer, vehicleType);
-        assertThat(redis.hasKey(AvailabilityCache.slotsKey(dealer, DAY, 0, service, vehicleType))).isFalse();
+        assertThat(redis.hasKey(RedisAvailabilityCache.slotsKey(dealer, DAY, 0, service, vehicleType))).isFalse();
         // Never released by a request that does not own it
         assertThat(redis.opsForValue().get(lock)).isEqualTo("another-request");
     }
 
     @Test
     void lockOfAnOldVersionDoesNotBlockTheNewOne() throws Exception {
-        redis.opsForValue().set(AvailabilityCache.lockKey(dealer, DAY, 0, service, vehicleType), "slow-v0-rebuild",
+        redis.opsForValue().set(RedisAvailabilityCache.lockKey(dealer, DAY, 0, service, vehicleType), "slow-v0-rebuild",
                 Duration.ofSeconds(30));
-        redis.opsForValue().increment(AvailabilityCache.versionKey(dealer, DAY));
+        redis.opsForValue().increment(RedisAvailabilityCache.versionKey(dealer, DAY));
 
         long began = System.nanoTime();
         get();
 
         assertThat(Duration.ofNanos(System.nanoTime() - began)).isLessThan(Duration.ofSeconds(2));
-        assertThat(redis.hasKey(AvailabilityCache.slotsKey(dealer, DAY, 1, service, vehicleType))).isTrue();
-        assertThat(redis.hasKey(AvailabilityCache.lockKey(dealer, DAY, 1, service, vehicleType))).isFalse();
+        assertThat(redis.hasKey(RedisAvailabilityCache.slotsKey(dealer, DAY, 1, service, vehicleType))).isTrue();
+        assertThat(redis.hasKey(RedisAvailabilityCache.lockKey(dealer, DAY, 1, service, vehicleType))).isFalse();
     }
 
     @Test
     void luaReleaseDeletesOnlyTheOwnersLock() {
-        String lock = AvailabilityCache.lockKey(dealer, DAY, 0, service, vehicleType);
+        String lock = RedisAvailabilityCache.lockKey(dealer, DAY, 0, service, vehicleType);
         redis.opsForValue().set(lock, "b7", Duration.ofSeconds(30));
 
         // A's lock expired and B took it: A's release must leave B's lock alone

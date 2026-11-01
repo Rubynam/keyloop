@@ -1,4 +1,16 @@
-package com.keyloop.scheduler.api.availability;
+package com.keyloop.scheduler.api.cache.availability.impl;
+
+import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.CACHE_NOT_A_SLOT_LIST;
+import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.CACHE_WAIT_INTERRUPTED;
+import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.FAIL_OPEN_EVENT;
+import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.FAIL_OPEN_EVENT_DESCRIPTION;
+import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.KEY_SEPARATOR;
+import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.KEY_VERSION_MARK;
+import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.LOCK_KEY_PREFIX;
+import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.SLOTS_KEY_PREFIX;
+import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.SLOT_FIELD_END;
+import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.SLOT_FIELD_START;
+import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.VERSION_KEY_PREFIX;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -15,12 +27,14 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-import com.keyloop.scheduler.api.availability.AvailabilityResponse.Slot;
+import com.keyloop.scheduler.api.cache.availability.AvailabilityCache;
+import com.keyloop.scheduler.api.config.availability.AvailabilityCacheProperties;
+import com.keyloop.scheduler.api.constant.availability.AvailabilityConstants;
+import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse.Slot;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -29,9 +43,10 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Versioned cache-aside for the full slot list of one local date (spec-availability-ops,
- * cache-read-path.md, ROADMAP D1). Redis is only a read-side copy: PostgreSQL decides
- * every booking, so a stale or missing entry costs speed, never correctness.
+ * Redis implementation of {@link AvailabilityCache}: versioned cache-aside for the full
+ * slot list of one local date (spec-availability-ops, cache-read-path.md, ROADMAP D1).
+ * Redis is only a read-side copy: PostgreSQL decides every booking, so a stale or
+ * missing entry costs speed, never correctness. Prefixes live in {@link AvailabilityConstants}.
  *
  * <h2>Keys</h2>
  * <pre>
@@ -86,12 +101,9 @@ import tools.jackson.databind.json.JsonMapper;
  * WARN log line and an event on the current observation (span). It never fails a read.
  */
 @Component
-public class AvailabilityCache {
+public class RedisAvailabilityCache implements AvailabilityCache {
 
-    private static final Logger log = LoggerFactory.getLogger(AvailabilityCache.class);
-
-    /** Name of the event added to the current span when Redis fails and we read PostgreSQL. */
-    public static final String FAIL_OPEN_EVENT = "availability.cache.fail-open";
+    private static final Logger log = LoggerFactory.getLogger(RedisAvailabilityCache.class);
 
     private final StringRedisTemplate redis;
     private final RedisScript<Long> releaseScript;
@@ -99,10 +111,9 @@ public class AvailabilityCache {
     private final AvailabilityCacheProperties properties;
     private final ObservationRegistry observations;
 
-    @Autowired
-    public AvailabilityCache(StringRedisTemplate redis, RedisScript<Long> availabilityLockReleaseScript,
-                             JsonMapper json, AvailabilityCacheProperties properties,
-                             ObservationRegistry observations) {
+    public RedisAvailabilityCache(StringRedisTemplate redis, RedisScript<Long> availabilityLockReleaseScript,
+                                  JsonMapper json, AvailabilityCacheProperties properties,
+                                  ObservationRegistry observations) {
         this.redis = redis;
         this.releaseScript = availabilityLockReleaseScript;
         this.json = json;
@@ -110,29 +121,23 @@ public class AvailabilityCache {
         this.observations = observations;
     }
 
-    /** A cache that never touches Redis: every read is computed (unit tests, cache off). */
-    static AvailabilityCache disabled() {
-        return new AvailabilityCache(null, null, null, AvailabilityCacheProperties.off(), ObservationRegistry.NOOP);
-    }
-
     static String versionKey(UUID dealershipId, LocalDate date) {
-        return "avail:ver:" + dealershipId + ":" + date;
+        return VERSION_KEY_PREFIX + dealershipId + KEY_SEPARATOR + date;
     }
 
     static String slotsKey(UUID dealershipId, LocalDate date, long version, UUID serviceTypeId, UUID vehicleTypeId) {
-        return "avail:" + dealershipId + ":" + date + ":v" + version + ":" + serviceTypeId + ":" + vehicleTypeId;
+        return SLOTS_KEY_PREFIX + dealershipId + KEY_SEPARATOR + date + KEY_VERSION_MARK + version
+                + KEY_SEPARATOR + serviceTypeId + KEY_SEPARATOR + vehicleTypeId;
     }
 
     static String lockKey(UUID dealershipId, LocalDate date, long version, UUID serviceTypeId, UUID vehicleTypeId) {
-        return "avail:lock:" + dealershipId + ":" + date + ":v" + version + ":" + serviceTypeId + ":" + vehicleTypeId;
+        return LOCK_KEY_PREFIX + dealershipId + KEY_SEPARATOR + date + KEY_VERSION_MARK + version
+                + KEY_SEPARATOR + serviceTypeId + KEY_SEPARATOR + vehicleTypeId;
     }
 
-    /**
-     * Step 1 of the read: reads the version of every date. Call it before any PostgreSQL
-     * read of the same request.
-     */
+    @Override
     public Lookup lookup(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId, List<LocalDate> dates) {
-        Lookup lookup = new Lookup(dealershipId, serviceTypeId, vehicleTypeId, dates);
+        RedisLookup lookup = new RedisLookup(dealershipId, serviceTypeId, vehicleTypeId, dates);
         if (properties.enabled()) {
             lookup.readVersions();
         } else {
@@ -142,7 +147,7 @@ public class AvailabilityCache {
     }
 
     /** One request's cache read: versions first, then {@link #slots} with a PostgreSQL loader. */
-    public final class Lookup {
+    private final class RedisLookup implements Lookup {
 
         private final UUID dealershipId;
         private final UUID serviceTypeId;
@@ -152,7 +157,7 @@ public class AvailabilityCache {
         /** Set after the first Redis error: the rest of the request does not try Redis again. */
         private boolean redisOff;
 
-        private Lookup(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId, List<LocalDate> dates) {
+        private RedisLookup(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId, List<LocalDate> dates) {
             this.dealershipId = dealershipId;
             this.serviceTypeId = serviceTypeId;
             this.vehicleTypeId = vehicleTypeId;
@@ -171,11 +176,7 @@ public class AvailabilityCache {
             }
         }
 
-        /**
-         * Full-day slot lists (no "now" cut) for every date of the lookup.
-         *
-         * @param loader computes the given dates from PostgreSQL; its errors are not caught
-         */
+        @Override
         public Map<LocalDate, List<Slot>> slots(Function<Set<LocalDate>, Map<LocalDate, List<Slot>>> loader) {
             Map<LocalDate, List<Slot>> result = new HashMap<>();
             Set<LocalDate> missing = new LinkedHashSet<>(dates);
@@ -264,11 +265,11 @@ public class AvailabilityCache {
         }
 
         private String slotsKey(LocalDate date) {
-            return AvailabilityCache.slotsKey(dealershipId, date, versions.get(date), serviceTypeId, vehicleTypeId);
+            return RedisAvailabilityCache.slotsKey(dealershipId, date, versions.get(date), serviceTypeId, vehicleTypeId);
         }
 
         private String lockKey(LocalDate date) {
-            return AvailabilityCache.lockKey(dealershipId, date, versions.get(date), serviceTypeId, vehicleTypeId);
+            return RedisAvailabilityCache.lockKey(dealershipId, date, versions.get(date), serviceTypeId, vehicleTypeId);
         }
 
         /** Runs one Redis command; on a Redis error turns the cache off for this request and returns null. */
@@ -288,13 +289,13 @@ public class AvailabilityCache {
             List<Slot> slots = new ArrayList<>();
             // Parsed by hand: a JSON date mapper would move the offset to UTC
             for (JsonNode slot : json.readTree(value)) {
-                slots.add(new Slot(OffsetDateTime.parse(slot.required("start").asString()),
-                        OffsetDateTime.parse(slot.required("end").asString())));
+                slots.add(new Slot(OffsetDateTime.parse(slot.required(SLOT_FIELD_START).asString()),
+                        OffsetDateTime.parse(slot.required(SLOT_FIELD_END).asString())));
             }
             return List.copyOf(slots);
         } catch (RuntimeException e) {
             // Only we write these keys, so this is a bug, not bad user input
-            throw new IllegalStateException("Cached availability is not a slot list: " + value, e);
+            throw new IllegalStateException(CACHE_NOT_A_SLOT_LIST + value, e);
         }
     }
 
@@ -302,7 +303,7 @@ public class AvailabilityCache {
         log.warn("Availability cache unavailable, reading from PostgreSQL instead: {}", e.getMessage());
         Observation current = observations.getCurrentObservation();
         if (current != null) {
-            current.event(Observation.Event.of(FAIL_OPEN_EVENT, "Redis error, read from PostgreSQL"));
+            current.event(Observation.Event.of(FAIL_OPEN_EVENT, FAIL_OPEN_EVENT_DESCRIPTION));
         }
     }
 
@@ -311,7 +312,7 @@ public class AvailabilityCache {
             Thread.sleep(duration);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("Interrupted while waiting for the availability cache", e);
+            throw new IllegalStateException(CACHE_WAIT_INTERRUPTED, e);
         }
     }
 }

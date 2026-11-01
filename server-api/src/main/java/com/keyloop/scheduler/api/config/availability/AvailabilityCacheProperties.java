@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.availability;
+package com.keyloop.scheduler.api.config.availability;
 
 import java.time.Duration;
 
@@ -22,10 +22,4 @@ public record AvailabilityCacheProperties(
         Duration lockTtl,
         Duration lockWait,
         Duration pollInterval) {
-
-    /** No Redis at all: every read is computed from PostgreSQL. */
-    static AvailabilityCacheProperties off() {
-        return new AvailabilityCacheProperties(false, Duration.ZERO, Duration.ZERO, Duration.ZERO, Duration.ZERO,
-                Duration.ZERO);
-    }
 }

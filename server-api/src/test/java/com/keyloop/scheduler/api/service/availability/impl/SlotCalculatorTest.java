@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.availability;
+package com.keyloop.scheduler.api.service.availability.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -9,9 +9,9 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 
-import com.keyloop.scheduler.api.availability.AvailabilityResponse.Day;
-import com.keyloop.scheduler.api.availability.AvailabilityResponse.Slot;
-import com.keyloop.scheduler.api.availability.SlotCalculator.Interval;
+import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse.Day;
+import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse.Slot;
+import com.keyloop.scheduler.api.model.availability.Interval;
 import org.junit.jupiter.api.Test;
 
 class SlotCalculatorTest {

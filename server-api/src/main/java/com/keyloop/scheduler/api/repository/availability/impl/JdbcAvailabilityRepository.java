@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.availability;
+package com.keyloop.scheduler.api.repository.availability.impl;
 
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -9,6 +9,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.keyloop.scheduler.api.model.AppointmentStatus;
+import com.keyloop.scheduler.api.model.availability.Booking;
+import com.keyloop.scheduler.api.model.availability.Dealership;
+import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -17,20 +20,15 @@ import org.springframework.stereotype.Repository;
  * {@link JdbcClient}: there are no JPA entities, and none are added for a read.
  */
 @Repository
-public class AvailabilityRepository {
-
-    /** Business hours as minutes after local midnight; {@code closeMinute} may be 1440 ('24:00'). */
-    public record Dealership(String timezone, int openMinute, int closeMinute) {}
-
-    /** One non-cancelled appointment holding a bay and a technician. */
-    public record Booking(UUID serviceBayId, UUID technicianId, Instant start, Instant end) {}
+public class JdbcAvailabilityRepository implements AvailabilityRepository {
 
     private final JdbcClient jdbc;
 
-    public AvailabilityRepository(JdbcClient jdbc) {
+    public JdbcAvailabilityRepository(JdbcClient jdbc) {
         this.jdbc = jdbc;
     }
 
+    @Override
     public Optional<Dealership> findDealership(UUID id) {
         // EXTRACT keeps '24:00' as 1440; a LocalTime cannot hold it. Seconds round inwards
         // (open up, close down) so a slot never starts before open or ends after close.
@@ -46,6 +44,7 @@ public class AvailabilityRepository {
                 .optional();
     }
 
+    @Override
     public Optional<Integer> findServiceDurationMinutes(UUID serviceTypeId) {
         return jdbc.sql("SELECT duration_minutes FROM service_types WHERE id = :id")
                 .param("id", serviceTypeId)
@@ -53,6 +52,7 @@ public class AvailabilityRepository {
                 .optional();
     }
 
+    @Override
     public boolean vehicleTypeExists(UUID vehicleTypeId) {
         return jdbc.sql("SELECT EXISTS (SELECT 1 FROM vehicle_types WHERE id = :id)")
                 .param("id", vehicleTypeId)
@@ -60,7 +60,7 @@ public class AvailabilityRepository {
                 .single();
     }
 
-    /** Active bays of the dealership that take the vehicle type. */
+    @Override
     public List<UUID> findFittingBayIds(UUID dealershipId, UUID vehicleTypeId) {
         return jdbc.sql("""
                         SELECT b.id
@@ -75,7 +75,7 @@ public class AvailabilityRepository {
                 .list();
     }
 
-    /** Active technicians of the dealership with the skill AND the vehicle-type certification. */
+    @Override
     public List<UUID> findQualifiedTechnicianIds(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId) {
         return jdbc.sql("""
                         SELECT t.id
@@ -93,10 +93,7 @@ public class AvailabilityRepository {
                 .list();
     }
 
-    /**
-     * Non-cancelled appointments that hold one of the given bays or technicians and
-     * overlap {@code [from, to)} (half-open, D1). Both collections must be non-empty.
-     */
+    @Override
     public List<Booking> findBookings(UUID dealershipId, Collection<UUID> bayIds, Collection<UUID> technicianIds,
                                       Instant from, Instant to) {
         return jdbc.sql("""
