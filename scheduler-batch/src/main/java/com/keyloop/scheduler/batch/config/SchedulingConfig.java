@@ -2,6 +2,7 @@ package com.keyloop.scheduler.batch.config;
 
 import javax.sql.DataSource;
 
+import com.keyloop.scheduler.batch.constant.SchedulingConstants;
 import net.javacrumbs.shedlock.core.LockProvider;
 import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;
 import net.javacrumbs.shedlock.spring.annotation.EnableSchedulerLock;
@@ -16,7 +17,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @Configuration
 @EnableScheduling
-@EnableSchedulerLock(defaultLockAtMostFor = "PT5M")
+@EnableSchedulerLock(defaultLockAtMostFor = SchedulingConstants.DEFAULT_LOCK_AT_MOST_FOR)
 public class SchedulingConfig {
 
     @Bean

@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Duration;
 import java.time.Instant;
 
-import com.keyloop.scheduler.batch.outbox.OutboxRelay;
-import com.keyloop.scheduler.batch.outbox.OutboxRelayProperties;
+import com.keyloop.scheduler.batch.config.outbox.OutboxRelayProperties;
+import com.keyloop.scheduler.batch.schedule.OutboxRelay;
 import com.keyloop.scheduler.batch.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.batch.core.BatchStatus;

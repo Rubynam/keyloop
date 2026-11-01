@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.batch.outbox;
+package com.keyloop.scheduler.batch.service.outbox.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -13,6 +13,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import com.keyloop.scheduler.batch.service.outbox.OutboxRelayService;
 import com.keyloop.scheduler.batch.support.IntegrationTest;
 import com.keyloop.scheduler.batch.support.LogCapture;
 import com.keyloop.scheduler.batch.support.OutboxRows;
@@ -25,6 +26,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.util.AopTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -39,7 +41,7 @@ class OutboxRelayIT extends IntegrationTest {
     private static final Duration TWO_DAYS = Duration.ofDays(2);
 
     @Autowired
-    private OutboxRelay relay;
+    private OutboxRelayService relay;
     @Autowired
     private JdbcClient jdbc;
     @Autowired
@@ -61,7 +63,7 @@ class OutboxRelayIT extends IntegrationTest {
             "BayBlocked", "BusinessHoursChanged", "TechnicianUnavailable"})
     void sampleBumpsEveryDateOfItsUnionOnce(String eventType) {
         String sample = OutboxRows.sample(eventType);
-        OutboxRelay.Payload payload = relay.parse(sample);
+        OutboxRelayServiceImpl.Payload payload = parse(sample);
         List<Long> before = payload.dates().stream().map(d -> version(payload.dealershipId(), d)).toList();
         UUID id = outbox.insert(eventType, sample);
 
@@ -77,7 +79,7 @@ class OutboxRelayIT extends IntegrationTest {
 
     @Test
     void rescheduledBumpsTheUnionOfDatesOldDatesAndNewDates() {
-        assertThat(relay.parse(OutboxRows.sample("AppointmentRescheduled")).dates())
+        assertThat(parse(OutboxRows.sample("AppointmentRescheduled")).dates())
                 .containsExactly(LocalDate.parse("2026-11-05"), LocalDate.parse("2026-11-04"));
     }
 
@@ -119,7 +121,7 @@ class OutboxRelayIT extends IntegrationTest {
     void badPayloadIsFailedOnTheFirstTryWithoutRetry(String payload) {
         UUID id = outbox.insert("AppointmentBooked", payload);
 
-        try (LogCapture log = LogCapture.of(OutboxRelay.class)) {
+        try (LogCapture log = LogCapture.of(OutboxRelayServiceImpl.class)) {
             relay.tick();
 
             assertThat(log.lines()).anySatisfy(line -> assertThat(line).startsWith(
@@ -204,6 +206,12 @@ class OutboxRelayIT extends IntegrationTest {
         for (int i = 0; i < rows; i++) {
             assertThat(version(dealer, first.plusDays(i))).isEqualTo(1);
         }
+    }
+
+    /** {@code parse} is package-private on the implementation, not part of the service interface. */
+    private OutboxRelayServiceImpl.Payload parse(String raw) {
+        OutboxRelayServiceImpl impl = AopTestUtils.getTargetObject(relay);
+        return impl.parse(raw);
     }
 
     private static String payload(UUID dealer, String date) {

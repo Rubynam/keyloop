@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.batch.outbox;
+package com.keyloop.scheduler.batch.schedule;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

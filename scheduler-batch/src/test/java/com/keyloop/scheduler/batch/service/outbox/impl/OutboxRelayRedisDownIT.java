@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.batch.outbox;
+package com.keyloop.scheduler.batch.service.outbox.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.keyloop.scheduler.batch.service.outbox.OutboxRelayService;
 import com.keyloop.scheduler.batch.support.IntegrationTest;
 import com.keyloop.scheduler.batch.support.LogCapture;
 import com.keyloop.scheduler.batch.support.OutboxRows;
@@ -30,7 +31,7 @@ class OutboxRelayRedisDownIT extends IntegrationTest {
     private static final Duration RETRY_DELAY = Duration.ofSeconds(2);
 
     @Autowired
-    private OutboxRelay relay;
+    private OutboxRelayService relay;
     @Autowired
     private JdbcClient jdbc;
     @Autowired
@@ -59,7 +60,7 @@ class OutboxRelayRedisDownIT extends IntegrationTest {
             outbox.makeDue(id);
         }
 
-        try (LogCapture log = LogCapture.of(OutboxRelay.class)) {
+        try (LogCapture log = LogCapture.of(OutboxRelayServiceImpl.class)) {
             relay.tick();
 
             assertThat(log.lines()).anySatisfy(line -> assertThat(line).startsWith(

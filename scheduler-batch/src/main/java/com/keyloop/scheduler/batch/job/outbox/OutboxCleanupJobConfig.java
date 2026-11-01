@@ -1,5 +1,6 @@
-package com.keyloop.scheduler.batch.job;
+package com.keyloop.scheduler.batch.job.outbox;
 
+import com.keyloop.scheduler.batch.constant.SchedulingConstants;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
 
@@ -8,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
  * FAILED outbox rows past their retention, then prunes old Batch metadata.
  */
 @Configuration
-@ConditionalOnProperty(name = "scheduler.outbox.cleanup.enabled", havingValue = "true")
+@ConditionalOnProperty(name = SchedulingConstants.OUTBOX_CLEANUP_ENABLED_PROPERTY, havingValue = SchedulingConstants.ENABLED)
 public class OutboxCleanupJobConfig {
     // TODO(cleanup spec): chunked delete steps + daily launch from JobScheduler
 }

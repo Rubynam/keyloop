@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.batch.outbox;
+package com.keyloop.scheduler.batch.config.outbox;
 
 import java.time.Duration;
 

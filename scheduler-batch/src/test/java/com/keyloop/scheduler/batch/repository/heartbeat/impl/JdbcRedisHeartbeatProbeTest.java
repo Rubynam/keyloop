@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.batch.job;
+package com.keyloop.scheduler.batch.repository.heartbeat.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -7,25 +7,26 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.batch.infrastructure.repeat.RepeatStatus;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-class HeartbeatTaskletTest {
+/** The probe is what the heartbeat tasklet used to do inline: {@code SELECT 1} and {@code PING}. */
+class JdbcRedisHeartbeatProbeTest {
 
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
     private final StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
-    private final HeartbeatTasklet tasklet = new HeartbeatTasklet(jdbcTemplate, redisTemplate);
+    private final JdbcRedisHeartbeatProbe probe = new JdbcRedisHeartbeatProbe(jdbcTemplate, redisTemplate);
 
     @Test
     @SuppressWarnings("unchecked")
-    void finishesWhenPostgresAndRedisAnswer() {
+    void answersWhenPostgresAndRedisAnswer() {
         when(jdbcTemplate.queryForObject("SELECT 1", Integer.class)).thenReturn(1);
         when(redisTemplate.execute(any(RedisCallback.class))).thenReturn("PONG");
 
-        assertThat(tasklet.execute(null, null)).isEqualTo(RepeatStatus.FINISHED);
+        assertThat(probe.pingPostgres()).isEqualTo(1);
+        assertThat(probe.pingRedis()).isEqualTo("PONG");
     }
 
     @Test
@@ -33,7 +34,7 @@ class HeartbeatTaskletTest {
         when(jdbcTemplate.queryForObject("SELECT 1", Integer.class))
                 .thenThrow(new DataAccessResourceFailureException("down"));
 
-        assertThatThrownBy(() -> tasklet.execute(null, null))
+        assertThatThrownBy(probe::pingPostgres)
                 .isInstanceOf(DataAccessResourceFailureException.class);
     }
 }
