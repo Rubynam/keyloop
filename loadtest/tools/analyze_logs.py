@@ -1,14 +1,15 @@
 """Reads everything one ramp run left behind and lists potential bugs.
 
-Inputs (written by loadtest/run-ramp.sh into one run folder):
+Inputs (written by loadtest/run-ramp.sh into one run folder; <p> = profile, ramp or book-ramp):
     logs/*.log                     Log4j2 files of server-api replicas and scheduler-batch
-    ramp_stats.csv, ramp_stats_history.csv, ramp_failures.csv     Locust
-    verdict-ramp.json              Locust budgets (thresholds.json)
-    ramp_simulator.json            booking simulator summary
+    <p>_stats.csv, <p>_stats_history.csv, <p>_failures.csv     Locust
+    verdict-<p>.json               Locust budgets (thresholds.json) + booking status mix
+    ramp_simulator.json            booking simulator summary (profile ramp only)
     docker_stats.csv               CPU / memory samples per container
     invariants.txt, relay_lag.txt, redis_info.txt, pg_stats.txt   post-run probes
 
     python3 loadtest/tools/analyze_logs.py loadtest/reports/ramp-<ts>
+    python3 loadtest/tools/analyze_logs.py loadtest/reports/book-ramp-<ts> book-ramp
     → <run>/analysis.md and <run>/analysis.json
 
     log line  2026-11-01 11:23:00.034  INFO [cid] [thread] c.k.s.b.s.JobScheduler : message
@@ -16,6 +17,7 @@ Inputs (written by loadtest/run-ramp.sh into one run folder):
 """
 import csv
 import json
+import os
 import re
 import sys
 from collections import Counter, defaultdict
@@ -29,7 +31,12 @@ NUM = re.compile(r"\b\d+(\.\d+)?\b")
 
 # Client errors the API answers on purpose (4xx). Logged at ERROR they are noise, not bugs.
 CLIENT_ERRORS = {"NotFoundException", "InvalidRangeException", "MethodArgumentTypeMismatchException",
-                 "MissingServletRequestParameterException"}
+                 "MissingServletRequestParameterException", "MethodArgumentNotValidException",
+                 # Booking (Spec07): 400 / 409 / 422 by ApiExceptionHandler
+                 "VehicleOwnerMismatchException", "VehicleBusyException", "IdempotencyKeyMismatchException",
+                 "NotServiceableException", "OutsideBusinessHoursException", "OffSlotGridException",
+                 "BookingConflictException"}
+TARGET_RPS = int(os.getenv("RAMP_MAX_RPS", "100"))
 
 # (id, what it means, regex on message + stack text)
 DETECTORS = [
@@ -129,9 +136,9 @@ def num(v):
         return None
 
 
-def analyze_locust(run, verdict):
-    stats = {r["Name"]: r for r in read_csv(run / "ramp_stats.csv")}
-    history = [r for r in read_csv(run / "ramp_stats_history.csv") if r["Name"] == "Aggregated"]
+def analyze_locust(run, verdict, profile):
+    stats = {r["Name"]: r for r in read_csv(run / f"{profile}_stats.csv")}
+    history = [r for r in read_csv(run / f"{profile}_stats_history.csv") if r["Name"] == "Aggregated"]
     # Latency per load band: did p95 grow with RPS? (the knee)
     bands = defaultdict(list)
     for r in history:
@@ -141,7 +148,7 @@ def analyze_locust(run, verdict):
     curve = {b: {"rps": round(sum(x[0] for x in v) / len(v), 1), "p95MsMax": max(x[1] for x in v),
                  "failuresPerS": round(max(x[2] for x in v), 2)} for b, v in sorted(bands.items())}
     peak_rps = max((num(r["Requests/s"]) or 0 for r in history), default=0)
-    failures = read_csv(run / "ramp_failures.csv")
+    failures = read_csv(run / f"{profile}_failures.csv")
     endpoints = {n: {"requests": int(r["Request Count"]), "failures": int(r["Failure Count"]),
                      "p50": num(r["50%"]), "p95": num(r["95%"]), "p99": num(r["99%"]), "max": num(r["Max Response Time"]),
                      "rps": num(r["Requests/s"])} for n, r in stats.items()}
@@ -168,7 +175,7 @@ def text(run, name):
     return p.read_text() if p.exists() else ""
 
 
-def findings(logs, locust, docker, sim, run):
+def findings(logs, locust, docker, sim, run, profile):
     """Turns the numbers into a ranked list of potential problems."""
     out = []
 
@@ -192,15 +199,16 @@ def findings(logs, locust, docker, sim, run):
         add("medium", "http", f"{sum(f['n'] for f in other)} responses did not match the expected output",
             "; ".join(f"{f['name']} ×{f['n']}: {f['error'][:140]}" for f in other[:5]))
     for err in (locust["verdict"] or {}).get("errors", []):
-        add("medium", "budget", f"Budget missed: {err}", "thresholds.json profile 'ramp'")
+        add("medium", "budget", f"Budget missed: {err}", f"thresholds.json profile '{profile}'")
     curve = locust["curve"]
     if curve:
         low, high = curve[min(curve)], curve[max(curve)]
         if low["p95MsMax"] and high["p95MsMax"] > 3 * max(low["p95MsMax"], 10):
             add("medium", "latency", f"p95 grows with load: {low['p95MsMax']:.0f} ms at ≤{min(curve)+19} users → "
                 f"{high['p95MsMax']:.0f} ms at {max(curve)} users", json.dumps(curve))
-    if locust["peakRps"] and locust["peakRps"] < 90:
-        add("medium", "throughput", f"Peak only {locust['peakRps']:.1f} RPS, target 100", "ramp_stats_history.csv")
+    if locust["peakRps"] and locust["peakRps"] < 0.9 * TARGET_RPS:
+        add("medium", "throughput", f"Peak only {locust['peakRps']:.1f} RPS, target {TARGET_RPS}",
+            f"{profile}_stats_history.csv")
 
     for line in text(run, "cache_freshness.txt").splitlines():
         if line.startswith("MISMATCH"):
@@ -243,7 +251,7 @@ def findings(logs, locust, docker, sim, run):
 
 
 def markdown(result):
-    L = [f"# Ramp run analysis — {result['run']}", ""]
+    L = [f"# {result['profile']} run analysis — {result['run']}", ""]
     L += ["## Potential issues", "", "| # | Severity | Area | Finding | Evidence |", "|---|---|---|---|---|"]
     for i, f in enumerate(result["findings"], 1):
         ev = f["evidence"].replace("|", "\\|").replace("\n", " ")[:400]
@@ -279,22 +287,28 @@ def markdown(result):
     L += ["", "## Containers (peak)", "", "| Container | CPU % | Memory MiB |", "|---|---|---|"]
     for n, p in sorted(result["docker"].items()):
         L.append(f"| {n} | {p['cpu']:.0f} | {p['memMiB']} |")
-    L += ["", "## Booking simulator", "", "```json", json.dumps(result["simulator"], indent=2), "```"]
+    outcomes = (loc["verdict"] or {}).get("aggregates", {})
+    if outcomes:
+        L += ["", "## Booking outcomes (status mix per case)", "", "| Case | Counts | OK |", "|---|---|---|"]
+        for cid, r in outcomes.items():
+            L.append(f"| {cid} | {', '.join(f'{s}: {n}' for s, n in sorted(r['counts'].items()))} | {r['ok']} |")
+    if result["simulator"]:
+        L += ["", "## Booking simulator", "", "```json", json.dumps(result["simulator"], indent=2), "```"]
     for name in ("cache_freshness.txt", "relay_lag.txt", "invariants.txt", "redis_info.txt", "pg_stats.txt"):
         L += ["", f"## {name}", "", "```", result["probes"].get(name, "").strip() or "(missing)", "```"]
     return "\n".join(L) + "\n"
 
 
-def main(run):
+def main(run, profile="ramp"):
     run = Path(run)
-    verdict = json.loads(text(run, "verdict-ramp.json") or "null")
+    verdict = json.loads(text(run, f"verdict-{profile}.json") or "null")
     sim = json.loads(text(run, "ramp_simulator.json") or "null")
     logs = analyze_logs(read_logs(run / "logs", text(run, "start.txt").strip()))
-    locust = analyze_locust(run, verdict)
+    locust = analyze_locust(run, verdict, profile)
     docker = analyze_docker(run)
-    result = {"run": run.name, "logs": logs, "locust": locust, "docker": docker, "simulator": sim,
+    result = {"run": run.name, "profile": profile, "logs": logs, "locust": locust, "docker": docker, "simulator": sim,
               "probes": {n: text(run, n) for n in ("cache_freshness.txt", "relay_lag.txt", "invariants.txt", "redis_info.txt", "pg_stats.txt")}}
-    result["findings"] = findings(logs, locust, docker, sim, run)
+    result["findings"] = findings(logs, locust, docker, sim, run, profile)
     (run / "analysis.json").write_text(json.dumps(result, indent=2, ensure_ascii=False, default=str) + "\n")
     (run / "analysis.md").write_text(markdown(result))
     print(markdown(result))
@@ -302,4 +316,4 @@ def main(run):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1]))
+    sys.exit(main(*sys.argv[1:3]))

@@ -1,0 +1,223 @@
+{
+  "suite": "80-book-ramp",
+  "goal": "Ramp 0 → 100 requests/s on the booking API (Spec07, POST /api/v1/appointments), with customers reading availability on the same days. The API itself writes appointments + outbox (no simulator), so the candidate selector, the per-pair retry, the exclusion constraints and the relay invalidation all run under load.",
+  "precondition": "LOADTEST_PROFILE=book-ramp loadtest/run-ramp.sh (fresh build, seeding/seed.sh). Day ranges per case do not overlap (BR-02 1–7, BR-01 8–600, BR-03 601–900, BR-04 901–1000), so a case that needs a strict 201 never loses its slot to another case.",
+  "expectedFile": "expected/80-book-ramp.json",
+  "_doc": "Input requests. Locust loads this file, binds {{tokens}}, sends each request, then checks it against expectedFile. Weights are percent of case picks (BR-03 and BR-04 send 2 requests each).",
+  "cases": [
+    {
+      "id": "BR-01",
+      "goal": "Spread booking: a random standard car, oil change, random 15-min slot 8–600 days ahead. Mostly 201 with a real (bay, technician) pair; 409 when every pair is busy, 422 when the same car is already booked then.",
+      "verifies": ["Spec07 §1 goal 1", "Spec07 D8 reads per booking", "NFR-03"],
+      "weight": 45,
+      "bind": {
+        "v": "pool:standardCars",
+        "key": "uuid",
+        "start": {
+          "slot": {"tz": "Asia/Ho_Chi_Minh", "days": [8, 600], "open": "08:00", "lastStart": "16:00", "stepMinutes": 15}
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/appointments",
+        "name": "/api/v1/appointments",
+        "headers": {"Idempotency-Key": "{{key}}"},
+        "body": {
+          "customerId": "{{v.customerId}}",
+          "vehicleId": "{{v.vehicleId}}",
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "startTime": "{{start}}"
+        }
+      }
+    },
+    {
+      "id": "BR-02",
+      "goal": "Contended booking: everyone wants the next 7 days. These days fill within seconds, so most answers become 409 after max-pairs tries: the conflict path (3 short transactions, 23P01) is measured, and no double booking may get through.",
+      "verifies": ["Spec07 §1 goal 2", "Spec04 §6 max-pairs", "Spec03 DB-01 DB-02"],
+      "weight": 15,
+      "bind": {
+        "v": "pool:standardCars",
+        "key": "uuid",
+        "start": {
+          "slot": {"tz": "Asia/Ho_Chi_Minh", "days": [1, 7], "open": "08:00", "lastStart": "16:00", "stepMinutes": 15}
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/appointments",
+        "name": "/api/v1/appointments [contended]",
+        "headers": {"Idempotency-Key": "{{key}}"},
+        "body": {
+          "customerId": "{{v.customerId}}",
+          "vehicleId": "{{v.vehicleId}}",
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "startTime": "{{start}}"
+        }
+      }
+    },
+    {
+      "id": "BR-03",
+      "goal": "Idempotent retry under load: the SAME request with the SAME Idempotency-Key → the same appointment comes back (201, same id), no second row.",
+      "verifies": ["Spec07 idempotency", "Spec03 idempotency_key UNIQUE"],
+      "weight": 5,
+      "bind": {
+        "v": "pool:standardCars",
+        "key": "uuid",
+        "start": {
+          "slot": {"tz": "Asia/Ho_Chi_Minh", "days": [601, 900], "open": "08:00", "lastStart": "16:30", "stepMinutes": 15}
+        }
+      },
+      "steps": [
+        {
+          "id": "first",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/appointments",
+            "name": "/api/v1/appointments",
+            "headers": {"Idempotency-Key": "{{key}}"},
+            "body": {
+              "customerId": "{{v.customerId}}",
+              "vehicleId": "{{v.vehicleId}}",
+              "dealershipId": "{{ref.dealerships.Q7}}",
+              "serviceTypeId": "{{ref.serviceTypes.TYRE_ROTATION}}",
+              "startTime": "{{start}}"
+            }
+          },
+          "save": {"first": "id"}
+        },
+        {
+          "id": "replay",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/appointments",
+            "name": "/api/v1/appointments [replay]",
+            "headers": {"Idempotency-Key": "{{key}}"},
+            "body": {
+              "customerId": "{{v.customerId}}",
+              "vehicleId": "{{v.vehicleId}}",
+              "dealershipId": "{{ref.dealerships.Q7}}",
+              "serviceTypeId": "{{ref.serviceTypes.TYRE_ROTATION}}",
+              "startTime": "{{start}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "BR-04",
+      "goal": "Same car, same time, NEW key → 422 (Spec07 D2) under load: one car cannot be in two bays at once, even when the hub has free pairs.",
+      "verifies": ["Spec07 D2", "Spec03 DB-03 ex_appointments_vehicle"],
+      "weight": 3,
+      "bind": {
+        "v": "pool:standardCars",
+        "k1": "uuid",
+        "k2": "uuid",
+        "start": {
+          "slot": {"tz": "Asia/Ho_Chi_Minh", "days": [901, 1000], "open": "08:00", "lastStart": "16:00", "stepMinutes": 15}
+        }
+      },
+      "steps": [
+        {
+          "id": "first",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/appointments",
+            "name": "/api/v1/appointments",
+            "headers": {"Idempotency-Key": "{{k1}}"},
+            "body": {
+              "customerId": "{{v.customerId}}",
+              "vehicleId": "{{v.vehicleId}}",
+              "dealershipId": "{{ref.dealerships.Q7}}",
+              "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+              "startTime": "{{start}}"
+            }
+          }
+        },
+        {
+          "id": "overlap",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/appointments",
+            "name": "/api/v1/appointments [conflict]",
+            "headers": {"Idempotency-Key": "{{k2}}"},
+            "body": {
+              "customerId": "{{v.customerId}}",
+              "vehicleId": "{{v.vehicleId}}",
+              "dealershipId": "{{ref.dealerships.Q7}}",
+              "serviceTypeId": "{{ref.serviceTypes.TYRE_ROTATION}}",
+              "startTime": "{{start}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "BR-05",
+      "goal": "Start in the past → 400, decided before any candidate read or DB write.",
+      "verifies": ["Spec07 validation", "CLAUDE.md §2 error statuses"],
+      "weight": 4,
+      "bind": {
+        "v": "pool:standardCars",
+        "key": "uuid",
+        "start": {"at": {"tz": "Asia/Ho_Chi_Minh", "days": -1, "time": "09:00"}}
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/appointments",
+        "name": "/api/v1/appointments [invalid]",
+        "headers": {"Idempotency-Key": "{{key}}"},
+        "body": {
+          "customerId": "{{v.customerId}}",
+          "vehicleId": "{{v.vehicleId}}",
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "startTime": "{{start}}"
+        }
+      }
+    },
+    {
+      "id": "BR-06",
+      "goal": "Hydrogen car at the hub → 422: no bay or technician there takes it. The candidate read finds nothing; it must stay cheap and never become a 409 or 5xx under load.",
+      "verifies": ["Spec07 NotServiceable", "ROADMAP D2"],
+      "weight": 3,
+      "bind": {"key": "uuid", "start": {"at": {"tz": "Asia/Ho_Chi_Minh", "days": 6, "time": "09:00"}}},
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/appointments",
+        "name": "/api/v1/appointments [unprocessable]",
+        "headers": {"Idempotency-Key": "{{key}}"},
+        "body": {
+          "customerId": "{{ref.vehicles.HYDROGEN.customerId}}",
+          "vehicleId": "{{ref.vehicles.HYDROGEN.vehicleId}}",
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "startTime": "{{start}}"
+        }
+      }
+    },
+    {
+      "id": "BR-07",
+      "goal": "HOT read on the contended days (Q7, oil change, gasoline car, next 7 days): BR-02 bookings bump these days' versions through the relay while customers read them.",
+      "verifies": ["D1 cache-aside", "Spec04 relay invalidation", "Spec07 outbox row"],
+      "weight": 25,
+      "bind": {
+        "from": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 1}},
+        "to": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 7}}
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [hot]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{from}}",
+          "to": "{{to}}"
+        }
+      }
+    }
+  ]
+}

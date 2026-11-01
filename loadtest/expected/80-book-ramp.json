@@ -1,0 +1,95 @@
+{
+  "suite": "80-book-ramp",
+  "inputFile": "input/80-book-ramp.json",
+  "_doc": "Expected output per case id of the input file. A response that differs is a Locust failure (Spec06 §5). 'aggregate' counts every status of the case: the verdict shows the 201 / 409 / 422 mix. No traceId on 409 yet (deferred, Spec07 triage B1). BR-03/BR-04 step 'first' only prepares data: 72 cars and 7 oil-change technicians at Q7 mean another user may already hold the car (422) or the hour (409); that is a valid answer, so the case just stops (continueOn).",
+  "cases": [
+    {
+      "id": "BR-01",
+      "goal": "Spread booking: a random standard car, oil change, random 15-min slot 8–600 days ahead. Mostly 201 with a real (bay, technician) pair; 409 when every pair is busy, 422 when the same car is already booked then.",
+      "expect": {
+        "status": [201, 409, 422],
+        "onStatus": {
+          "201": {
+            "headers": {"Location": {"matches": "/api/v1/appointments/[0-9a-f-]{36}$"}},
+            "body": [
+              {"path": "id", "matches": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+              {"path": "status", "equals": "CONFIRMED"},
+              {"path": "startTime", "equals": "{{start}}"},
+              {"path": "endTime", "matches": "Z$"},
+              {"path": "vehicleId", "equals": "{{v.vehicleId}}"},
+              {"path": "serviceBayId", "type": "string"},
+              {"path": "technicianId", "type": "string"}
+            ]
+          },
+          "409": {
+            "headers": {"Content-Type": {"matches": "^application/problem\\+json"}},
+            "body": [{"path": "status", "equals": 409}]
+          },
+          "422": {
+            "headers": {"Content-Type": {"matches": "^application/problem\\+json"}},
+            "body": [{"path": "status", "equals": 422}]
+          }
+        }
+      },
+      "aggregate": {"allowed": [201, 409, 422], "atLeast": {"201": 500}}
+    },
+    {
+      "id": "BR-02",
+      "goal": "Contended booking: everyone wants the next 7 days. These days fill within seconds, so most answers become 409 after max-pairs tries: the conflict path (3 short transactions, 23P01) is measured, and no double booking may get through.",
+      "expect": {
+        "status": [201, 409, 422],
+        "onStatus": {
+          "201": {"body": [{"path": "status", "equals": "CONFIRMED"}, {"path": "startTime", "equals": "{{start}}"}]},
+          "409": {
+            "headers": {"Content-Type": {"matches": "^application/problem\\+json"}},
+            "body": [{"path": "status", "equals": 409}]
+          },
+          "422": {"body": [{"path": "status", "equals": 422}]}
+        }
+      },
+      "aggregate": {"allowed": [201, 409, 422], "atLeast": {"409": 1}}
+    },
+    {
+      "id": "BR-03",
+      "goal": "Idempotent retry under load: the SAME request with the SAME Idempotency-Key → the same appointment comes back (201, same id), no second row.",
+      "steps": [
+        {"id": "first", "expect": {"status": [201, 409, 422], "continueOn": [201], "onStatus": {"201": {"body": [{"path": "status", "equals": "CONFIRMED"}]}, "409": {"body": [{"path": "status", "equals": 409}]}, "422": {"body": [{"path": "status", "equals": 422}]}}}},
+        {"id": "replay", "expect": {"status": 201, "body": [{"path": "id", "equals": "{{first}}"}]}}
+      ]
+    },
+    {
+      "id": "BR-04",
+      "goal": "Same car, same time, NEW key → 422 (Spec07 D2) under load: one car cannot be in two bays at once, even when the hub has free pairs.",
+      "steps": [
+        {"id": "first", "expect": {"status": [201, 409, 422], "continueOn": [201], "onStatus": {"409": {"body": [{"path": "status", "equals": 409}]}, "422": {"body": [{"path": "status", "equals": 422}]}}}},
+        {"id": "overlap", "expect": {"status": 422, "body": [{"path": "status", "equals": 422}]}}
+      ]
+    },
+    {
+      "id": "BR-05",
+      "goal": "Start in the past → 400, decided before any candidate read or DB write.",
+      "expect": {
+        "status": 400,
+        "headers": {"Content-Type": {"matches": "^application/problem\\+json"}},
+        "body": [{"path": "status", "equals": 400}]
+      }
+    },
+    {
+      "id": "BR-06",
+      "goal": "Hydrogen car at the hub → 422: no bay or technician there takes it. The candidate read finds nothing; it must stay cheap and never become a 409 or 5xx under load.",
+      "expect": {"status": 422, "body": [{"path": "status", "equals": 422}]}
+    },
+    {
+      "id": "BR-07",
+      "goal": "HOT read on the contended days (Q7, oil change, gasoline car, next 7 days): BR-02 bookings bump these days' versions through the relay while customers read them.",
+      "expect": {
+        "status": 200,
+        "headers": {"Content-Type": {"matches": "^application/json"}},
+        "body": [
+          {"path": "timezone", "equals": "Asia/Ho_Chi_Minh"},
+          {"path": "days", "type": "array", "minItems": 7, "maxItems": 7}
+        ]
+      }
+    }
+  ]
+}

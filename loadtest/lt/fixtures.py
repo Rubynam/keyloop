@@ -4,6 +4,8 @@ Input and expected output live in two files per suite, joined by case id:
 
     input/<suite>.json      what is sent:  goal, verifies, weight, bind, request | steps[]
     expected/<suite>.json   what must come back: expect | steps[].expect, aggregate
+                            steps[].expect.continueOn: statuses after which the case goes on
+                            (any other allowed status passes, but ends the case)
 
 Pipeline per case execution:
     1. load_suite()  read input + expected, join by case id (and step id), fail on any gap
