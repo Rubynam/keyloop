@@ -1,0 +1,46 @@
+{
+  "suite": "00-smoke",
+  "goal": "The harness and the edge are wired up: requests go through nginx to a server-api replica, the correlation id survives the round trip, internal endpoints stay hidden. Runs against today's build (Spec01/Spec02 only).",
+  "precondition": "docker compose up -d --wait",
+  "expectedFile": "expected/00-smoke.json",
+  "_doc": "Input requests. Locust loads this file, binds {{tokens}}, sends each request, then checks it against expectedFile.",
+  "cases": [
+    {
+      "id": "SM-01",
+      "goal": "Ping answers through the load balancer, and the response says which replica served it (Spec02 LB-10).",
+      "verifies": ["Spec01 API-07", "Spec02 LB-10"],
+      "weight": 4,
+      "request": {"method": "GET", "path": "/api/v1/ping", "name": "/api/v1/ping"}
+    },
+    {
+      "id": "SM-02",
+      "goal": "The client's X-Request-Id is kept end to end (nginx → API MDC → response), so a slow request in the report can be found in the logs.",
+      "verifies": ["Spec02 LB-09", "Spec02 API-16"],
+      "bind": {"rid": "uuid"},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/ping",
+        "name": "/api/v1/ping [request-id]",
+        "headers": {"X-Request-Id": "lt-smoke-{{rid}}"}
+      }
+    },
+    {
+      "id": "SM-03",
+      "goal": "Health summary is reachable through the edge and every dependency is UP (DB + Redis in readiness).",
+      "verifies": ["Spec01 API-06", "Spec02 LB-12"],
+      "request": {"method": "GET", "path": "/actuator/health", "name": "/actuator/health"}
+    },
+    {
+      "id": "SM-04",
+      "goal": "Other actuator endpoints are NOT exposed at the edge (no env / heap dump leaks under load).",
+      "verifies": ["Spec02 LB-12"],
+      "request": {"method": "GET", "path": "/actuator/env", "name": "/actuator/env [blocked]"}
+    },
+    {
+      "id": "SM-05",
+      "goal": "An unknown API path is a ProblemDetail 404 from the API, not an nginx HTML page or a 5xx.",
+      "verifies": ["Spec01 API-08"],
+      "request": {"method": "GET", "path": "/api/v1/does-not-exist", "name": "/api/v1/{unknown}"}
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "suite": "10-catalogue",
+  "goal": "Reference data a booking UI loads first. Small, rarely changing, read on every page: must be fast and must reflect the seed exactly.",
+  "precondition": "seeding/seed.sh (Spec03 data)",
+  "expectedFile": "expected/10-catalogue.json",
+  "_doc": "Input requests. Locust loads this file, binds {{tokens}}, sends each request, then checks it against expectedFile.",
+  "cases": [
+    {
+      "id": "CT-01",
+      "goal": "Dealership list returns the seeded branches with their time zone and opening hours (the client needs them to show local times).",
+      "verifies": ["DLD §3 GET /dealerships"],
+      "weight": 3,
+      "request": {"method": "GET", "path": "/api/v1/dealerships", "name": "/api/v1/dealerships"}
+    },
+    {
+      "id": "CT-02",
+      "goal": "Service types carry their duration: the client computes nothing, but shows how long the job takes.",
+      "verifies": ["DLD §3 GET /service-types"],
+      "weight": 3,
+      "request": {"method": "GET", "path": "/api/v1/service-types", "name": "/api/v1/service-types"}
+    },
+    {
+      "id": "CT-03",
+      "goal": "All 8 vehicle types from the lookup table are listed — including the unused MOTORBIKE (types are data, D2).",
+      "verifies": ["ROADMAP D2"],
+      "request": {"method": "GET", "path": "/api/v1/vehicle-types", "name": "/api/v1/vehicle-types"}
+    },
+    {
+      "id": "CT-04",
+      "goal": "Look up a vehicle by VIN: the response gives the vehicle type derived from its model, which the client then passes to /availability.",
+      "verifies": ["DLD §3 GET /vehicles/{vin}", "ROADMAP D2"],
+      "weight": 2,
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/vehicles/{{ref.vehicles.HYBRID.vin}}",
+        "name": "/api/v1/vehicles/{vin}"
+      }
+    },
+    {
+      "id": "CT-05",
+      "goal": "Unknown VIN is a 404 ProblemDetail (not 500, not an empty 200).",
+      "verifies": ["DLD §11"],
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/vehicles/ZZZZZZZZZZZZZZZZZ",
+        "name": "/api/v1/vehicles/{vin} [unknown]"
+      }
+    }
+  ]
+}

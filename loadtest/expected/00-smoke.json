@@ -1,0 +1,44 @@
+{
+  "suite": "00-smoke",
+  "inputFile": "input/00-smoke.json",
+  "_doc": "Expected output per case id of the input file. A response that differs is a Locust failure (Spec06 §5).",
+  "cases": [
+    {
+      "id": "SM-01",
+      "goal": "Ping answers through the load balancer, and the response says which replica served it (Spec02 LB-10).",
+      "expect": {
+        "status": 200,
+        "headers": {
+          "Content-Type": {"matches": "^application/json"},
+          "X-Upstream-Addr": {"matches": "^\\d+\\.\\d+\\.\\d+\\.\\d+:8080$"}
+        },
+        "body": [{"path": "status", "equals": "ok"}],
+        "maxLatencyMs": 500
+      }
+    },
+    {
+      "id": "SM-02",
+      "goal": "The client's X-Request-Id is kept end to end (nginx → API MDC → response), so a slow request in the report can be found in the logs.",
+      "expect": {"status": 200, "headers": {"X-Request-Id": {"equals": "lt-smoke-{{rid}}"}}}
+    },
+    {
+      "id": "SM-03",
+      "goal": "Health summary is reachable through the edge and every dependency is UP (DB + Redis in readiness).",
+      "expect": {"status": 200, "body": [{"path": "status", "equals": "UP"}]}
+    },
+    {
+      "id": "SM-04",
+      "goal": "Other actuator endpoints are NOT exposed at the edge (no env / heap dump leaks under load).",
+      "expect": {"status": 404}
+    },
+    {
+      "id": "SM-05",
+      "goal": "An unknown API path is a ProblemDetail 404 from the API, not an nginx HTML page or a 5xx.",
+      "expect": {
+        "status": 404,
+        "headers": {"Content-Type": {"matches": "^application/problem\\+json"}},
+        "body": [{"path": "status", "equals": 404}, {"path": "title", "type": "string"}]
+      }
+    }
+  ]
+}
