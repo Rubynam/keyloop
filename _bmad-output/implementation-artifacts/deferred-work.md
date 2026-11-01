@@ -34,3 +34,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-05-pr2-pr5-layered-refactor.md`
   summary: Add `constant/ping/PingConstants` and `resources/redis/release-lock.lua` to the CLAUDE.md §1 layout tree.
   evidence: Both were added by Spec05 PR2/PR5 but the tree written in PR5 omits them.
+- source_spec: `planing/Spec07.md`
+  summary: Pick pairs herd — every concurrent request for one slot gets the same 3 pairs (deterministic, AC13), so some answer 409 while other pairs are still free. Candidate fix: rotate the pair list by `hash(idempotencyKey) % n` (same key → same order).
+  evidence: Raised on 2026-11-01 while reviewing Spec07 §7.1 / §13 "no lock on the candidate read". User deferred it: no load test numbers yet. Decide with Spec06 `race` / `stress` (rate of 409 while free pairs remain).
+- source_spec: `planing/Spec07.md`
+  summary: `JdbcCandidateRepository.countAppointments` filters `technician_id IN (...) AND start_time` with no `dealership_id`, so `idx_appointments_dealer_start` is not used and it reads each technician's full history. Candidate fix: add `dealership_id = :dealershipId` or an index `(technician_id, start_time)`.
+  evidence: Raised on 2026-11-01. User deferred it until there is data. Check with `EXPLAIN ANALYZE` on a seeded table with months of past appointments (needs seed data, not concurrent load).
+- source_spec: `planing/Spec07.md`
+  summary: Connection pool pressure on booking spikes — 5–7 reads (D8) + up to 3 transactions per request may exhaust the Hikari pool → 503. Options: merge the candidate reads into one SQL (D8) or tune pool size.
+  evidence: Raised on 2026-11-01. User deferred it: no load test numbers yet. Decide with Spec06 `stress` (pool wait time, 503 rate, p95).
