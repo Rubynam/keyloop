@@ -1,14 +1,12 @@
 package com.keyloop.scheduler.api.availability;
 
-import java.time.Clock;
-
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
 
-/** Beans of the availability read path: the request clock and the lock release script. */
+/** Beans of the availability read path: the lock release script. The clock lives in {@link com.keyloop.scheduler.api.config.ClockConfig}. */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AvailabilityCacheProperties.class)
 public class AvailabilityConfig {
@@ -23,12 +21,6 @@ public class AvailabilityConfig {
             end
             return 0
             """;
-
-    /** "Now" of a request: slots that started before it are dropped. Tests replace it. */
-    @Bean
-    Clock clock() {
-        return Clock.systemUTC();
-    }
 
     @Bean
     RedisScript<Long> availabilityLockReleaseScript() {

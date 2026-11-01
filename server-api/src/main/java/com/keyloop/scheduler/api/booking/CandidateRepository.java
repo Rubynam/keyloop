@@ -8,7 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import com.keyloop.scheduler.api.domain.AppointmentStatus;
+import com.keyloop.scheduler.api.model.AppointmentStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 

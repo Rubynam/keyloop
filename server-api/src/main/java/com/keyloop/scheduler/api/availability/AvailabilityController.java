@@ -3,6 +3,7 @@ package com.keyloop.scheduler.api.availability;
 import java.time.LocalDate;
 import java.util.UUID;
 
+import com.keyloop.scheduler.api.constant.ApiPaths;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Missing or malformed params are 400; unknown ids are 404 ({@code ApiExceptionHandler}).
  */
 @RestController
-@RequestMapping("/api/v1")
+@RequestMapping(ApiPaths.API_V1)
 public class AvailabilityController {
 
     private final AvailabilityService service;
@@ -24,7 +25,7 @@ public class AvailabilityController {
         this.service = service;
     }
 
-    @GetMapping("/availability")
+    @GetMapping(ApiPaths.AVAILABILITY)
     public AvailabilityResponse availability(
             @RequestParam UUID dealershipId,
             @RequestParam UUID serviceTypeId,

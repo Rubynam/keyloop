@@ -7,6 +7,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import com.keyloop.scheduler.api.constant.HeaderNames;
 import com.keyloop.scheduler.logging.CorrelationId;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -21,18 +22,16 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class RequestIdFilter extends OncePerRequestFilter {
 
-    static final String HEADER = "X-Request-Id";
-
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        String requestId = request.getHeader(HEADER);
+        String requestId = request.getHeader(HeaderNames.REQUEST_ID);
         if (requestId == null || requestId.isBlank()) {
             // Called directly (IDE run, no nginx in front)
             requestId = CorrelationId.newId();
         }
         CorrelationId.set(requestId);
-        response.setHeader(HEADER, requestId);
+        response.setHeader(HeaderNames.REQUEST_ID, requestId);
         try {
             chain.doFilter(request, response);
         } finally {

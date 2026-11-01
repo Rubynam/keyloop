@@ -1,7 +1,8 @@
 package com.keyloop.scheduler.api.web;
 
 import com.keyloop.scheduler.api.availability.InvalidRangeException;
-import com.keyloop.scheduler.api.availability.NotFoundException;
+import com.keyloop.scheduler.api.constant.ErrorMessages;
+import com.keyloop.scheduler.api.exception.NotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -24,34 +25,31 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(NotFoundException.class)
     ProblemDetail notFound(NotFoundException e) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
-        problem.setTitle("Not Found");
-        return problem;
+        return problem(HttpStatus.NOT_FOUND, e.getMessage());
     }
 
     @ExceptionHandler(InvalidRangeException.class)
     ProblemDetail invalidRange(InvalidRangeException e) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
-        problem.setTitle("Bad Request");
-        return problem;
+        return problem(HttpStatus.BAD_REQUEST, e.getMessage());
     }
 
     /** DLD §11: PostgreSQL unavailable → 503. */
     @ExceptionHandler(DataAccessException.class)
     ProblemDetail dataAccess(DataAccessException e) {
         log.error("Database error", e);
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE,
-                "The service is temporarily unavailable, please retry later.");
-        problem.setTitle("Service Unavailable");
-        return problem;
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, ErrorMessages.SERVICE_UNAVAILABLE);
     }
 
     @ExceptionHandler(Exception.class)
     ProblemDetail unexpected(Exception e) {
         log.error("Unexpected error", e);
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR,
-                "An unexpected error occurred.");
-        problem.setTitle("Internal Server Error");
+        return problem(HttpStatus.INTERNAL_SERVER_ERROR, ErrorMessages.UNEXPECTED);
+    }
+
+    /** Title is the standard reason phrase (Spec05 D9), e.g. "Not Found". */
+    private static ProblemDetail problem(HttpStatus status, String detail) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
+        problem.setTitle(status.getReasonPhrase());
         return problem;
     }
 }

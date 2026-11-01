@@ -16,8 +16,9 @@ import java.util.UUID;
 import com.keyloop.scheduler.api.availability.AvailabilityRepository;
 import com.keyloop.scheduler.api.availability.AvailabilityRepository.Booking;
 import com.keyloop.scheduler.api.availability.AvailabilityRepository.Dealership;
-import com.keyloop.scheduler.api.availability.NotFoundException;
 import com.keyloop.scheduler.api.booking.CandidateResult.Pair;
+import com.keyloop.scheduler.api.constant.ErrorMessages;
+import com.keyloop.scheduler.api.exception.NotFoundException;
 import org.springframework.stereotype.Service;
 
 /**
@@ -56,9 +57,9 @@ public class CandidateSelector {
      */
     public CandidateResult select(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId, Instant start) {
         Dealership dealership = availability.findDealership(dealershipId)
-                .orElseThrow(() -> new NotFoundException("Dealership", dealershipId));
+                .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_DEALERSHIP, dealershipId));
         int duration = availability.findServiceDurationMinutes(serviceTypeId)
-                .orElseThrow(() -> new NotFoundException("Service type", serviceTypeId));
+                .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_SERVICE_TYPE, serviceTypeId));
         Instant end = start.plus(Duration.ofMinutes(duration));
 
         // 1. Fitting resources
