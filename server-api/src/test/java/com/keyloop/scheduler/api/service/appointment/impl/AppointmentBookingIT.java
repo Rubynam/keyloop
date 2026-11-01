@@ -353,11 +353,41 @@ class AppointmentBookingIT extends IntegrationTest {
         assertProblem(book(key, body(customer, vehicle, dealer, service, local("09:00"))), 409, BOOKING_FAILED);
 
         // All 3 pairs are tried; the third (bay of pair 1, technician of pair 2) is seen busy
-        // by the check under lock, so it never reaches the insert
+        // by the check under lock, so it never reaches the insert. The second read finds
+        // no free pair, so the answer is 409
         verify(appointments, times(3)).lockResources(any(), any(), any());
         assertThat(tried).hasSize(2);
         assertThat(appointmentsWithKey(key)).isZero();
         assertThat(outboxRowsOfDealer()).isZero();
+    }
+
+    @Test
+    void everyPairOfTheFirstReadTakenThenTheSecondReadBooksTheFreePair() throws Exception {
+        // 4 free pairs, max-pairs 3: the 3 pairs of the first read are taken just before each
+        // insert; the second read finds the 4th bay and technician still free
+        for (int i = 0; i < 4; i++) {
+            fixtures.bay(dealer, vehicleType);
+            fixtures.technician(dealer, service, vehicleType);
+        }
+        List<NewAppointment> tried = new ArrayList<>();
+        doAnswer(invocation -> {
+            NewAppointment a = invocation.getArgument(0);
+            if (tried.size() < 3) {
+                takeConcurrently(a);
+            }
+            tried.add(a);
+            return invocation.callRealMethod();
+        }).when(appointments).insert(any());
+        String key = key();
+
+        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, local("09:00")));
+
+        assertThat(response.statusCode()).isEqualTo(201);
+        assertThat(tried).hasSize(4);
+        JsonNode body = json.readTree(response.body());
+        assertThat(body.get("serviceBayId").asString()).isEqualTo(tried.get(3).serviceBayId().toString());
+        assertThat(body.get("technicianId").asString()).isEqualTo(tried.get(3).technicianId().toString());
+        assertThat(appointmentsWithKey(key)).isEqualTo(1);
     }
 
     @Test

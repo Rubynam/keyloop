@@ -205,8 +205,10 @@ NOT_SERVICEABLE → 422      NONE_FREE → 409      PAIRS → §7.2
 ### 7.2 One transaction per pair
 
 ```
-for pair in pairs (max = scheduler.booking.max-pairs, no wait):
+for pair in pairs (max = scheduler.booking.max-pairs):
    BEGIN
+     pg_advisory_xact_lock: technician → bay → vehicle (fixed order: racers queue, no deadlock)
+     check the three are still free in the window ─► busy: ROLLBACK, SlotTakenException(X) as below
      INSERT appointments (... status = CONFIRMED, idempotency_key = :key) RETURNING id
      INSERT outbox_events (aggregate_type = 'Appointment', aggregate_id = :id,
                            event_type = 'AppointmentBooked',
@@ -218,7 +220,8 @@ for pair in pairs (max = scheduler.booking.max-pairs, no wait):
      SlotTakenException(VEHICLE)            23P01 ex_appointments_vehicle           ─► stop, 422 (D2)
      DuplicateIdempotencyKeyException       23505 idempotency_key (same-key race)   ─► read stored row → 201 / 422 (D3)
      other DataAccessException                                                      ─► 503
-after the last pair fails ──────────────────────────────────────────────────────────► 409
+after the last pair fails ─► vehicle booked meanwhile 422, else read candidates again (§7.1):
+                              NONE_FREE ─► 409, PAIRS ─► try them (at most max-candidate-reads reads)
 ```
 
 - The service never sees SQL or SQLSTATE. `JdbcAppointmentRepository` maps SQLSTATE + constraint name to the small domain exceptions above.
@@ -259,7 +262,8 @@ Moves: every `*/booking/*` class → `*/appointment/*` (same names). `CandidateS
 | Key | Default | Meaning |
 |---|---|---|
 | `scheduler.availability.slot-step` | `15m` | Slot grid for availability **and** booking (D4) |
-| `scheduler.booking.max-pairs` | `3` | Pairs tried before `409` (Spec04 §6) |
+| `scheduler.booking.max-pairs` | `3` | Pairs tried per candidate read (Spec04 §6) |
+| `scheduler.booking.max-candidate-reads` | `10` | Candidate reads per booking when every pair was taken meanwhile; `409` once a read finds none (book-burst 2026-11-01) |
 
 ---
 
@@ -280,7 +284,7 @@ Moves: every `*/booking/*` class → `*/appointment/*` (same names). `CandidateS
 
 | ID | Requirement |
 |---|---|
-| BK-07 | One transaction per pair, at most `max-pairs` tries, no wait (Spec04 §6). |
+| BK-07 | One transaction per pair, at most `max-pairs` tries per candidate read; racers queue on the resource locks, then check again (Spec04 §6). |
 | BK-08 | Appointment row and outbox row commit together or not at all. |
 | BK-09 | SQLSTATE is mapped only in `repository/**/impl` (§7.2 table). |
 | BK-10 | Outbox row: type `OutboxEventTypes.APPOINTMENT_BOOKED`, payload matches `docs/contracts/outbox/AppointmentBooked.json`, local dates. |

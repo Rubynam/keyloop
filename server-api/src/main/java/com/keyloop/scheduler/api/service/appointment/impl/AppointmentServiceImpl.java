@@ -13,6 +13,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
+import com.keyloop.scheduler.api.config.appointment.BookingProperties;
 import com.keyloop.scheduler.api.config.availability.AvailabilityProperties;
 import com.keyloop.scheduler.api.constant.ErrorMessages;
 import com.keyloop.scheduler.api.constant.OutboxEventTypes;
@@ -57,18 +58,21 @@ import org.springframework.transaction.support.TransactionOperations;
  *
  * <p>No {@code @Transactional} here: every pair needs its own transaction, run through
  * {@link TransactionOperations}. The candidate read is not locked: a stale read costs
- * one more try, never a double booking.
+ * one more try, never a double booking. When every pair of a read was taken meanwhile,
+ * the candidates are read again, so a racer gets 409 only when no pair is left.
  *
  * <pre>
  * key known? ──yes──► same 5 fields → replay  /  other → 422
  *    │no
- * 404s ─► owner 400 ─► grid 422 ─► hours 422 ─► vehicle busy 422 ─► candidates 422 / 409
+ * 404s ─► owner 400 ─► grid 422 ─► hours 422 ─► vehicle busy 422
  *    │
- * for pair in pairs:  BEGIN lock tech → bay → vehicle, check again,
- *                           insert appointment + outbox COMMIT ─► 201
- *                     bay / tech taken, deadlock, resource gone ─► next pair
- *                     vehicle taken ─► 422      same key committed ─► replay
- * all failed ─► 409   (vehicle booked meanwhile ─► 422; same key won ─► replay)
+ * read candidates ─► NOT_SERVICEABLE 422 / NONE_FREE 409       ◄──────────────┐
+ *    │                                                                       │
+ * for pair in pairs:  BEGIN lock tech → bay → vehicle, check again,          │
+ *                           insert appointment + outbox COMMIT ─► 201        │
+ *                     bay / tech taken, deadlock, resource gone ─► next pair │
+ *                     vehicle taken ─► 422      same key committed ─► replay │
+ * all failed ─► vehicle booked meanwhile 422 / last read 409 / else ─────────┘
  * </pre>
  */
 @Service
@@ -85,16 +89,19 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final CandidateSelector selector;
     private final TransactionOperations transactions;
     private final AvailabilityProperties slots;
+    private final BookingProperties booking;
 
     public AppointmentServiceImpl(AvailabilityRepository availability, AppointmentRepository appointments,
                                   OutboxRepository outbox, CandidateSelector selector,
-                                  TransactionOperations transactions, AvailabilityProperties slots) {
+                                  TransactionOperations transactions, AvailabilityProperties slots,
+                                  BookingProperties booking) {
         this.availability = availability;
         this.appointments = appointments;
         this.outbox = outbox;
         this.selector = selector;
         this.transactions = transactions;
         this.slots = slots;
+        this.booking = booking;
     }
 
     @Override
@@ -140,18 +147,40 @@ public class AppointmentServiceImpl implements AppointmentService {
             throw new VehicleBusyException();
         }
 
-        CandidateResult candidates = selector.select(request.dealershipId(), request.serviceTypeId(),
-                vehicle.vehicleTypeId(), start);
-        switch (candidates.outcome()) {
-            case NOT_SERVICEABLE -> throw new NotServiceableException();
-            case NONE_FREE -> throw new BookingConflictException();
-            case PAIRS -> {
-                // tried below
+        List<LocalDate> dates = localDates(zone, start, end);
+        for (int read = 1; ; read++) {
+            CandidateResult candidates = selector.select(request.dealershipId(), request.serviceTypeId(),
+                    vehicle.vehicleTypeId(), start);
+            switch (candidates.outcome()) {
+                case NOT_SERVICEABLE -> throw new NotServiceableException();
+                case NONE_FREE -> throw new BookingConflictException();
+                case PAIRS -> {
+                    // tried below
+                }
+            }
+            Optional<BookingResult> booked = tryPairs(candidates.pairs(), idempotencyKey, request, vehicle,
+                    start, end, dates);
+            if (booked.isPresent()) {
+                return booked.get();
+            }
+            // Lost every pair: if a parallel booking of this vehicle won, say so (D2), not 409
+            if (appointments.vehicleHasOverlap(vehicle.id(), start, end)) {
+                throw new VehicleBusyException();
+            }
+            // Each lost read means other bookings took those pairs, so this ends within
+            // `capacity` reads; the limit only guards against a fault (Spec04 §6)
+            if (read >= booking.maxCandidateReads()) {
+                throw new BookingConflictException();
             }
         }
+    }
 
-        List<Pair> pairs = candidates.pairs();
-        List<LocalDate> dates = localDates(zone, start, end);
+    /**
+     * One transaction per pair, in order, until one commits. Empty when every pair was
+     * taken; throws for the vehicle (422) and returns the stored row for a same-key race.
+     */
+    private Optional<BookingResult> tryPairs(List<Pair> pairs, String idempotencyKey, BookAppointmentRequest request,
+                                             VehicleRef vehicle, Instant start, Instant end, List<LocalDate> dates) {
         for (int i = 0; i < pairs.size(); i++) {
             Pair pair = pairs.get(i);
             NewAppointment appointment = new NewAppointment(request.customerId(), vehicle.id(),
@@ -160,7 +189,7 @@ public class AppointmentServiceImpl implements AppointmentService {
             try {
                 StoredAppointment saved = transactions.execute(status -> insertWithEvent(appointment, dates));
                 logTry(i, pairs.size(), pair, TryOutcome.BOOKED);
-                return new BookingResult(response(saved), false);
+                return Optional.of(new BookingResult(response(saved), false));
             } catch (SlotTakenException e) {
                 switch (e.resource()) {
                     case VEHICLE -> {
@@ -175,16 +204,12 @@ public class AppointmentServiceImpl implements AppointmentService {
                 logTry(i, pairs.size(), pair, TryOutcome.RESOURCE_GONE);
             } catch (DuplicateIdempotencyKeyException e) {
                 logTry(i, pairs.size(), pair, TryOutcome.KEY_TAKEN);
-                return appointments.findByIdempotencyKey(idempotencyKey)
+                return Optional.of(appointments.findByIdempotencyKey(idempotencyKey)
                         .map(stored -> replay(stored, request))
-                        .orElseThrow(BookingConflictException::new);
+                        .orElseThrow(BookingConflictException::new));
             }
         }
-        // Lost every pair: if a parallel booking of this vehicle won, say so (D2), not 409
-        if (appointments.vehicleHasOverlap(vehicle.id(), start, end)) {
-            throw new VehicleBusyException();
-        }
-        throw new BookingConflictException();
+        return Optional.empty();
     }
 
     /**

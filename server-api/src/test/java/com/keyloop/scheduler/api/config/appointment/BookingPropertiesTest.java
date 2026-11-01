@@ -10,7 +10,10 @@ import org.springframework.boot.context.properties.bind.BindException;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.validation.autoconfigure.ValidationAutoConfiguration;
 
-/** Spec07 §9: {@code scheduler.booking.max-pairs} binds, defaults to 3, and must be positive. */
+/**
+ * Spec07 §9: {@code scheduler.booking.max-pairs} (default 3) and
+ * {@code max-candidate-reads} (default 10) bind and must be positive.
+ */
 class BookingPropertiesTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
@@ -37,5 +40,22 @@ class BookingPropertiesTest {
     @Test
     void defaultIsThree() {
         runner.run(context -> assertThat(context.getBean(BookingProperties.class).maxPairs()).isEqualTo(3));
+    }
+
+    @Test
+    void candidateReadsDefaultToTenAndBind() {
+        runner.run(context -> assertThat(context.getBean(BookingProperties.class).maxCandidateReads()).isEqualTo(10));
+        runner.withPropertyValues("scheduler.booking.max-candidate-reads=2")
+                .run(context -> assertThat(context.getBean(BookingProperties.class).maxCandidateReads()).isEqualTo(2));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1"})
+    void candidateReadsNotPositiveFailsAtBoot(String reads) {
+        runner.withPropertyValues("scheduler.booking.max-candidate-reads=" + reads)
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).rootCause().hasMessageContaining("maxCandidateReads");
+                });
     }
 }
