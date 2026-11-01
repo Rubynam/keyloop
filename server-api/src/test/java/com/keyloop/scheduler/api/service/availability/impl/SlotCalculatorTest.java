@@ -16,6 +16,9 @@ import org.junit.jupiter.api.Test;
 
 class SlotCalculatorTest {
 
+    /** Default {@code scheduler.availability.slot-step}. */
+    private static final int STEP = 15;
+
     private static final ZoneId HCM = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final ZoneId NEW_YORK = ZoneId.of("America/New_York");
     private static final ZoneId UTC = ZoneId.of("UTC");
@@ -37,7 +40,7 @@ class SlotCalculatorTest {
 
     @Test
     void happyPathOffersEveryQuarterHourThatFitsBeforeClose() {
-        List<Day> days = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 60,
+        List<Day> days = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 60, STEP,
                 List.of(FREE), List.of(FREE));
 
         assertThat(days).hasSize(1);
@@ -55,7 +58,7 @@ class SlotCalculatorTest {
     void backToBackJobLeavesItsEndFreeButNotItsInside() {
         List<Interval> busy = List.of(new Interval(at(DAY, "09:00", HCM), at(DAY, "10:00", HCM)));
 
-        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 60,
+        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 60, STEP,
                 List.of(busy), List.of(busy)).getFirst();
 
         // 08:00 ends exactly at 09:00 (half-open) -> free; 08:15 .. 09:45 overlap
@@ -67,7 +70,7 @@ class SlotCalculatorTest {
     void busyTechnicianBlocksEvenWithAFreeBay() {
         List<Interval> busy = List.of(new Interval(at(DAY, "09:00", HCM), at(DAY, "10:00", HCM)));
 
-        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 60,
+        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 60, STEP,
                 List.of(FREE), List.of(busy)).getFirst();
 
         assertThat(localStarts(day)).doesNotContain("09:00", "09:15");
@@ -77,7 +80,7 @@ class SlotCalculatorTest {
     void anyFreeBayPlusAnyFreeTechnicianIsEnough() {
         List<Interval> busy = List.of(new Interval(at(DAY, "09:00", HCM), at(DAY, "10:00", HCM)));
 
-        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 60,
+        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 60, STEP,
                 List.of(busy, FREE), List.of(FREE, busy)).getFirst();
 
         assertThat(localStarts(day)).contains("09:00", "09:15");
@@ -85,7 +88,7 @@ class SlotCalculatorTest {
 
     @Test
     void serviceLongerThanOpeningHoursHasNoSlots() {
-        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 600,
+        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 600, STEP,
                 List.of(FREE), List.of(FREE)).getFirst();
 
         assertThat(day.slots()).isEmpty();
@@ -93,7 +96,7 @@ class SlotCalculatorTest {
 
     @Test
     void openAllDayEndsWithTheSlotUpToMidnight() {
-        Day day = SlotCalculator.compute(DAY, DAY, UTC, 0, 1440, 60,
+        Day day = SlotCalculator.compute(DAY, DAY, UTC, 0, 1440, 60, STEP,
                 List.of(FREE), List.of(FREE)).getFirst();
 
         assertThat(day.slots()).hasSize(93); // 00:00 .. 23:00
@@ -104,7 +107,7 @@ class SlotCalculatorTest {
 
     @Test
     void fullDayServiceFitsOnlyAt24hDealer() {
-        Day day = SlotCalculator.compute(DAY, DAY, UTC, 0, 1440, 1440,
+        Day day = SlotCalculator.compute(DAY, DAY, UTC, 0, 1440, 1440, STEP,
                 List.of(FREE), List.of(FREE)).getFirst();
 
         assertThat(localStarts(day)).containsExactly("00:00");
@@ -115,7 +118,7 @@ class SlotCalculatorTest {
         LocalDate before = LocalDate.of(2026, 10, 31);
         LocalDate dstEnd = LocalDate.of(2026, 11, 1);
 
-        List<Day> days = SlotCalculator.compute(before, dstEnd, NEW_YORK, minutes("07:00"), minutes("19:00"), 60,
+        List<Day> days = SlotCalculator.compute(before, dstEnd, NEW_YORK, minutes("07:00"), minutes("19:00"), 60, STEP,
                 List.of(FREE), List.of(FREE));
 
         Day sat = days.get(0);
@@ -132,7 +135,7 @@ class SlotCalculatorTest {
     void dstOverlapHourAt24hDealerIsOfferedOncePerOffset() {
         LocalDate dstEnd = LocalDate.of(2026, 11, 1);
 
-        Day day = SlotCalculator.compute(dstEnd, dstEnd, NEW_YORK, 0, 1440, 60,
+        Day day = SlotCalculator.compute(dstEnd, dstEnd, NEW_YORK, 0, 1440, 60, STEP,
                 List.of(FREE), List.of(FREE)).getFirst();
 
         // 25-hour day: 01:00-01:45 happen twice
@@ -149,7 +152,7 @@ class SlotCalculatorTest {
     void dstGapLocalTimesAreNotOffered() {
         LocalDate dstStart = LocalDate.of(2026, 3, 8);
 
-        Day day = SlotCalculator.compute(dstStart, dstStart, NEW_YORK, 0, 1440, 15,
+        Day day = SlotCalculator.compute(dstStart, dstStart, NEW_YORK, 0, 1440, 15, STEP,
                 List.of(FREE), List.of(FREE)).getFirst();
 
         // 23-hour day: 02:00-02:45 do not exist
@@ -158,10 +161,18 @@ class SlotCalculatorTest {
     }
 
     @Test
+    void stepFromConfigSetsTheGrid() {
+        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("10:00"), 60, 30,
+                List.of(FREE), List.of(FREE)).getFirst();
+
+        assertThat(localStarts(day)).containsExactly("08:00", "08:30", "09:00");
+    }
+
+    @Test
     void slotsStartingBeforeNowAreDropped() {
         Instant now = at(DAY, "10:05", HCM);
 
-        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 60,
+        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 60, STEP,
                 List.of(FREE), List.of(FREE)).getFirst();
         Day cut = new Day(DAY, SlotCalculator.notStartedBefore(day.slots(), now));
 
@@ -172,7 +183,7 @@ class SlotCalculatorTest {
     void slotStartingExactlyNowIsKept() {
         Instant now = at(DAY, "10:00", HCM);
 
-        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 60,
+        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("08:00"), minutes("17:00"), 60, STEP,
                 List.of(FREE), List.of(FREE)).getFirst();
         Day cut = new Day(DAY, SlotCalculator.notStartedBefore(day.slots(), now));
 
@@ -183,9 +194,9 @@ class SlotCalculatorTest {
     void noBayOrNoTechnicianGivesEveryDateEmpty() {
         LocalDate to = DAY.plusDays(2);
 
-        List<Day> noBays = SlotCalculator.compute(DAY, to, HCM, minutes("08:00"), minutes("17:00"), 60,
+        List<Day> noBays = SlotCalculator.compute(DAY, to, HCM, minutes("08:00"), minutes("17:00"), 60, STEP,
                 List.of(), List.of(FREE));
-        List<Day> noTechs = SlotCalculator.compute(DAY, to, HCM, minutes("08:00"), minutes("17:00"), 60,
+        List<Day> noTechs = SlotCalculator.compute(DAY, to, HCM, minutes("08:00"), minutes("17:00"), 60, STEP,
                 List.of(FREE), List.of());
 
         assertThat(noBays).hasSize(3).allMatch(d -> d.slots().isEmpty());
@@ -195,7 +206,7 @@ class SlotCalculatorTest {
 
     @Test
     void durationNotAMultipleOfTheStepStillStartsOnQuarterHours() {
-        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("09:00"), minutes("10:00"), 50,
+        Day day = SlotCalculator.compute(DAY, DAY, HCM, minutes("09:00"), minutes("10:00"), 50, STEP,
                 List.of(FREE), List.of(FREE)).getFirst();
 
         assertThat(localStarts(day)).containsExactly("09:00");

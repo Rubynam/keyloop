@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.repository.booking.impl;
+package com.keyloop.scheduler.api.repository.appointment.impl;
 
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.keyloop.scheduler.api.model.AppointmentStatus;
-import com.keyloop.scheduler.api.repository.booking.CandidateRepository;
+import com.keyloop.scheduler.api.repository.appointment.CandidateRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 

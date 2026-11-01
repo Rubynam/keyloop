@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.keyloop.scheduler.api.config.availability.AvailabilityProperties;
 import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse;
 import com.keyloop.scheduler.api.exception.availability.InvalidRangeException;
 import com.keyloop.scheduler.api.model.availability.Booking;
@@ -42,6 +44,7 @@ class AvailabilityServiceTest {
     /** Holds a booking but does not fit this query (e.g. not certified for the vehicle type). */
     private static final UUID OTHER_TECH = UUID.randomUUID();
     private static final Clock LONG_AGO = Clock.fixed(Instant.parse("2020-01-01T00:00:00Z"), ZoneOffset.UTC);
+    private static final AvailabilityProperties STEP_15 = new AvailabilityProperties(Duration.ofMinutes(15));
 
     private final AvailabilityRepository repository = mock(AvailabilityRepository.class);
 
@@ -63,7 +66,7 @@ class AvailabilityServiceTest {
     }
 
     private List<String> starts(Clock clock) {
-        AvailabilityResponse response = new AvailabilityServiceImpl(repository, new PassThroughAvailabilityCache(), clock).find(DEALER, SERVICE, VEHICLE, DAY, DAY);
+        AvailabilityResponse response = new AvailabilityServiceImpl(repository, new PassThroughAvailabilityCache(), clock, STEP_15).find(DEALER, SERVICE, VEHICLE, DAY, DAY);
         return response.days().getFirst().slots().stream().map(s -> s.start().toLocalTime().toString()).toList();
     }
 
@@ -143,7 +146,7 @@ class AvailabilityServiceTest {
 
     @Test
     void extremeDatesAreRejectedAsBadRange() {
-        assertThatThrownBy(() -> new AvailabilityServiceImpl(repository, new PassThroughAvailabilityCache(), LONG_AGO)
+        assertThatThrownBy(() -> new AvailabilityServiceImpl(repository, new PassThroughAvailabilityCache(), LONG_AGO, STEP_15)
                 .find(DEALER, SERVICE, VEHICLE, LocalDate.MAX, LocalDate.MAX))
                 .isInstanceOf(InvalidRangeException.class);
         assertThatThrownBy(() -> AvailabilityServiceImpl.validateRange(LocalDate.MIN, LocalDate.MIN))

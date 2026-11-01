@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.keyloop.scheduler.api.cache.availability.AvailabilityCache;
+import com.keyloop.scheduler.api.config.availability.AvailabilityProperties;
 import com.keyloop.scheduler.api.constant.ErrorMessages;
 import com.keyloop.scheduler.api.constant.availability.AvailabilityConstants;
 import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse;
@@ -43,11 +44,14 @@ public class AvailabilityServiceImpl implements AvailabilityService {
     private final AvailabilityRepository repository;
     private final AvailabilityCache cache;
     private final Clock clock;
+    private final AvailabilityProperties properties;
 
-    public AvailabilityServiceImpl(AvailabilityRepository repository, AvailabilityCache cache, Clock clock) {
+    public AvailabilityServiceImpl(AvailabilityRepository repository, AvailabilityCache cache, Clock clock,
+                                   AvailabilityProperties properties) {
         this.repository = repository;
         this.cache = cache;
         this.clock = clock;
+        this.properties = properties;
     }
 
     @Override
@@ -111,7 +115,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 
         Map<LocalDate, List<Slot>> result = new HashMap<>();
         for (AvailabilityResponse.Day day : SlotCalculator.compute(from, to, zone,
-                dealership.openMinute(), dealership.closeMinute(), duration,
+                dealership.openMinute(), dealership.closeMinute(), duration, properties.stepMinutes(),
                 bayBusy.values(), technicianBusy.values())) {
             if (wanted.contains(day.date())) {
                 result.put(day.date(), day.slots());

@@ -28,34 +28,38 @@ Package layout: **layer first, then feature**.
 ```
 server-api  (com.keyloop.scheduler.api)
 ├── controller/
+│   ├── appointment/   AppointmentController
 │   ├── availability/  AvailabilityController
 │   └── ping/          PingController
 ├── service/
-│   ├── availability/  AvailabilityService (interface)
-│   │   └── impl/      AvailabilityServiceImpl, SlotCalculator (pure helper)
-│   └── booking/       CandidateSelector (interface)
-│       └── impl/      CandidateSelectorImpl
+│   ├── appointment/   AppointmentService, CandidateSelector (interfaces)
+│   │   └── impl/      AppointmentServiceImpl, CandidateSelectorImpl
+│   └── availability/  AvailabilityService (interface)
+│       └── impl/      AvailabilityServiceImpl, SlotCalculator (pure helper)
 ├── repository/
-│   ├── availability/  AvailabilityRepository (interface)
-│   │   └── impl/      JdbcAvailabilityRepository
-│   └── booking/       CandidateRepository (interface)
-│       └── impl/      JdbcCandidateRepository
+│   ├── appointment/   AppointmentRepository, CandidateRepository, OutboxRepository (interfaces)
+│   │   └── impl/      JdbcAppointmentRepository, JdbcCandidateRepository, JdbcOutboxRepository
+│   └── availability/  AvailabilityRepository (interface)
+│       └── impl/      JdbcAvailabilityRepository
 ├── cache/             Redis ports, same shape as repository/
 │   └── availability/  AvailabilityCache (interface)
 │       └── impl/      RedisAvailabilityCache
 ├── model/             shared types (AppointmentStatus)
-│   ├── availability/  Dealership, Booking, Interval (rows used by service + repository)
-│   └── booking/       CandidateResult
+│   ├── appointment/   CandidateResult, NewAppointment, StoredAppointment, VehicleRef, AppointmentBookedPayload
+│   └── availability/  Dealership, Booking, Interval (rows used by service + repository)
 ├── dto/
+│   ├── appointment/   BookAppointmentRequest, AppointmentResponse, BookingResult
 │   ├── availability/  AvailabilityResponse (HTTP only)
 │   └── ping/          PingResponse
 ├── exception/         NotFoundException (shared)
+│   ├── appointment/   BookingConflictException, VehicleBusyException, NotServiceableException, ...
 │   └── availability/  InvalidRangeException
-├── constant/          ApiPaths, HeaderNames, ErrorMessages (shared)
-│   ├── availability/  AvailabilityConstants
-│   └── booking/       BookingConstants
+├── constant/          ApiPaths, HeaderNames, ErrorMessages, OutboxEventTypes (shared)
+│   ├── appointment/   AppointmentConstants
+│   └── availability/  AvailabilityConstants
 ├── config/            ClockConfig
-│   └── availability/  AvailabilityConfig, AvailabilityCacheProperties
+│   ├── appointment/   AppointmentConfig, BookingProperties, ValidationClockConfig
+│   └── availability/  AvailabilityConfig, AvailabilityProperties, AvailabilityCacheProperties
 └── web/               ApiExceptionHandler, RequestIdFilter (cross-cutting HTTP infra)
 
 scheduler-batch  (com.keyloop.scheduler.batch)

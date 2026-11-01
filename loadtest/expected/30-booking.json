@@ -5,9 +5,9 @@
   "cases": [
     {
       "id": "BK-01",
-      "goal": "Normal booking at the hub: a random standard car, oil change, random 15-min slot 2–120 days ahead. Expected 201 with the assigned bay + technician, or 409 when that slot is already taken (by load or by the same vehicle).",
+      "goal": "Normal booking at the hub: a random standard car, oil change, random 15-min slot 2–120 days ahead. Expected 201 with the assigned bay + technician, 409 when that slot is already taken by load, or 422 when the same vehicle is already booked then (Spec07 D2).",
       "expect": {
-        "status": [201, 409],
+        "status": [201, 409, 422],
         "onStatus": {
           "201": {
             "headers": {"Location": {"matches": "/api/v1/appointments/[0-9a-f-]{36}$"}},
@@ -27,6 +27,10 @@
           "409": {
             "headers": {"Content-Type": {"matches": "^application/problem\\+json"}},
             "body": [{"path": "status", "equals": 409}, {"path": "traceId", "exists": true}]
+          },
+          "422": {
+            "headers": {"Content-Type": {"matches": "^application/problem\\+json"}},
+            "body": [{"path": "status", "equals": 422}]
           }
         }
       }
@@ -41,10 +45,10 @@
     },
     {
       "id": "BK-03",
-      "goal": "Same vehicle, same time, NEW key → 409: one car cannot be in two bays at once (DB-03), even though the hub has free bays and technicians.",
+      "goal": "Same vehicle, same time, NEW key → 422 (Spec07 D2): one car cannot be in two bays at once (DB-03), even though the hub has free bays and technicians.",
       "steps": [
         {"id": "first", "expect": {"status": 201}},
-        {"id": "overlap", "expect": {"status": 409, "body": [{"path": "status", "equals": 409}]}}
+        {"id": "overlap", "expect": {"status": 422, "body": [{"path": "status", "equals": 422}]}}
       ]
     },
     {
@@ -58,13 +62,13 @@
     },
     {
       "id": "BK-05",
-      "goal": "Outside opening hours: 20:00 local at the hub (open 08:00–17:00) → 400.",
-      "expect": {"status": 400, "body": [{"path": "status", "equals": 400}]}
+      "goal": "Outside opening hours: 20:00 local at the hub (open 08:00–17:00) → 422 (Spec07 §5.1: valid shape, business rule fails).",
+      "expect": {"status": 422, "body": [{"path": "status", "equals": 422}]}
     },
     {
       "id": "BK-06",
-      "goal": "Starts inside the hours but ENDS after closing: 16:30 + 60 min at the hub (closes 17:00) → 400. The whole window must fit.",
-      "expect": {"status": 400, "body": [{"path": "status", "equals": 400}]}
+      "goal": "Starts inside the hours but ENDS after closing: 16:30 + 60 min at the hub (closes 17:00) → 422 (Spec07 §5.1). The whole window must fit.",
+      "expect": {"status": 422, "body": [{"path": "status", "equals": 422}]}
     },
     {
       "id": "BK-07",

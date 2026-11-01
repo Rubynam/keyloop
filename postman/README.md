@@ -4,7 +4,7 @@ Collection and environment for hand-testing the Scheduler API against docker com
 
 | File | What |
 |---|---|
-| `keyloop-scheduler.postman_collection.json` | v2.1 collection: ping, availability cases, 404s / 400s — every request has test scripts |
+| `keyloop-scheduler.postman_collection.json` | v2.1 collection: ping, availability cases, booking (Spec07), 404s / 400s — every request has test scripts |
 | `local.postman_environment.json` | `baseUrl` (`http://localhost:8080`, nginx) and the seed ids the requests use |
 
 ## Run
@@ -29,10 +29,20 @@ To hit a host-run API (`scripts/run-server-api.sh`), set `baseUrl` to `http://lo
 | | DST end (New York, 2026-10-31..11-02) | per date: slots present, `-04:00` before / `-05:00` after, starts on the 07:00–18:00 wall clock, last at 18:00 |
 | | Open 24h (roadside hub) | last slot `23:00Z`–`00:00Z` next day |
 | | Hydrogen car | `200`, every date empty |
+| Appointments | Book - happy path (hub, oil change) | `201`, `Location`, bay + technician, UTC times, 60 min; random slot 700–900 days ahead |
+| | Book - replay | same key + body → `201`, same id, `Idempotent-Replayed: true` |
+| | Key reused with another body / vehicle already booked | `422` |
+| | Missing `startTime`, past start, no offset, bad UUID, missing `Idempotency-Key` | `400` with `errors[].field` |
+| | Vehicle of another customer | `400` |
+| | Unknown dealership | `404` naming the dealership |
+| | Off the slot grid (09:07), outside hours (20:00), ends after closing (16:30), hydrogen car | `422` |
+| | Fully booked kiosk (2026-11-04 09:00) | `409` "Booking failed"; skipped once the date has passed |
 | Errors | Unknown dealership / service type / vehicle type | `404` ProblemDetail |
 | | `to` before `from`, 15-day range, missing `vehicleTypeId`, `from=abc`, bad UUID | `400` ProblemDetail |
 
 ## Dates
+
+- Run the Appointments folder in order: the replay and the first two `422`s reuse the happy path's key and slot.
 
 - A collection pre-request script sets `futureDate` = today + 3 days (UTC) and two days after it, so the
   happy path, 24h and hydrogen requests keep working on any day.

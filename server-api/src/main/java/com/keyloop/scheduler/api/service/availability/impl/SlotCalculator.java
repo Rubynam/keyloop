@@ -13,7 +13,6 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 
-import com.keyloop.scheduler.api.constant.availability.AvailabilityConstants;
 import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse.Day;
 import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse.Slot;
 import com.keyloop.scheduler.api.model.availability.Interval;
@@ -23,7 +22,7 @@ import com.keyloop.scheduler.api.model.availability.Interval;
  * needs is passed in, so every edge case is unit-testable without a database.
  *
  * <ul>
- *   <li>Candidate starts every {@value AvailabilityConstants#STEP_MINUTES} min of local wall-clock time from
+ *   <li>Candidate starts every {@code stepMinutes} (config {@code slot-step}) of local wall-clock time from
  *       {@code open}; a local time skipped by a DST gap is not a candidate, a local time
  *       repeated by a DST overlap is a candidate once per offset.</li>
  *   <li>Window {@code [start, start + duration)} must end at or before local {@code close}
@@ -40,12 +39,13 @@ public final class SlotCalculator {
     private SlotCalculator() {}
 
     /**
+     * @param stepMinutes distance between two candidate starts ({@code slot-step}, Spec07 D4)
      * @param bays        one entry per fitting bay: its busy intervals (empty = free all day)
      * @param technicians one entry per qualified technician: its busy intervals
      * @return one {@link Day} per local date in {@code [from, to]}, slots ordered by start
      */
     public static List<Day> compute(LocalDate from, LocalDate to, ZoneId zone,
-                                    int openMinute, int closeMinute, int durationMinutes,
+                                    int openMinute, int closeMinute, int durationMinutes, int stepMinutes,
                                     Collection<? extends Collection<Interval>> bays,
                                     Collection<? extends Collection<Interval>> technicians) {
         ZoneRules rules = zone.getRules();
@@ -57,7 +57,7 @@ public final class SlotCalculator {
                 LocalDateTime midnight = date.atStartOfDay();
                 Instant close = ZonedDateTime.ofLocal(midnight.plusMinutes(closeMinute), zone, null)
                         .withLaterOffsetAtOverlap().toInstant();
-                for (int m = openMinute; m < closeMinute; m += AvailabilityConstants.STEP_MINUTES) {
+                for (int m = openMinute; m < closeMinute; m += stepMinutes) {
                     LocalDateTime local = midnight.plusMinutes(m);
                     // Empty in a DST gap, two offsets in a DST overlap
                     for (ZoneOffset offset : rules.getValidOffsets(local)) {

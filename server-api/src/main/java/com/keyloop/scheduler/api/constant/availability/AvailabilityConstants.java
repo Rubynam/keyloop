@@ -4,7 +4,7 @@ import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
 /**
- * Fixed values of the availability read path: range limits, slot step, error text and
+ * Fixed values of the availability read path: range limits, error text and
  * Redis key prefixes. Tests and the relay depend on this text, so do not change a
  * character. Spec05 §6, cache-read-path.md.
  *
@@ -22,13 +22,13 @@ public final class AvailabilityConstants {
     public static final int MIN_YEAR = 1;
     public static final int MAX_YEAR = 9999;
 
-    /** Candidate slot starts are this many minutes apart, from the opening time. */
-    public static final int STEP_MINUTES = 15;
-
     public static final String RANGE_YEARS_OUT_OF_BOUNDS = "Dates must be between years %d and %d";
     public static final String RANGE_TO_BEFORE_FROM = "'to' (%s) is before 'from' (%s)";
     public static final String RANGE_TOO_LONG = "Range is %d days; at most %d are allowed";
     public static final String INVALID_TIME_ZONE = "Dealership has an invalid time zone: %s";
+    /** Startup error: {@code scheduler.availability.slot-step} is not a whole-minute divisor of 24h. */
+    public static final String INVALID_SLOT_STEP =
+            "scheduler.availability.slot-step must be whole minutes, greater than 0 and divide 24h, but was %s";
 
     /** Name of the event added to the current span when Redis fails and we read PostgreSQL. */
     public static final String FAIL_OPEN_EVENT = "availability.cache.fail-open";
