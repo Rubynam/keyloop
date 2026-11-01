@@ -43,3 +43,6 @@
 - source_spec: `planing/Spec07.md`
   summary: Connection pool pressure on booking spikes — 5–7 reads (D8) + up to 3 transactions per request may exhaust the Hikari pool → 503. Options: merge the candidate reads into one SQL (D8) or tune pool size.
   evidence: Raised on 2026-11-01. User deferred it: no load test numbers yet. Decide with Spec06 `stress` (pool wait time, 503 rate, p95).
+- source_spec: `_bmad-output/implementation-artifacts/spec-07-book-appointment.md`
+  summary: Load-test case BK-01 expects a `traceId` field on the 409 ProblemDetail, but the API does not emit one, so BK-01 fails on every 409.
+  evidence: Assertion `{"path": "traceId", "exists": true}` already in `loadtest/expected/30-booking.json:29` at baseline 251a8b0; adding `traceId` belongs to the tracing work (story-outbox-tracing / Spec06), not Spec07.

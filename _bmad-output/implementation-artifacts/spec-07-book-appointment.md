@@ -2,7 +2,7 @@
 title: 'Spec07 — Book an appointment (POST /api/v1/appointments)'
 type: 'feature'
 created: '2026-11-01'
-status: 'in-progress'
+status: 'in-review'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '251a8b05346efce5238442510891c865838754d3'
@@ -99,6 +99,37 @@ Full status/message table: `planing/Spec07.md` §5.1, §6, §7.2. Key rows:
 ## Spec Change Log
 
 ## Review Triage Log
+
+Pass 1 (2026-11-01). Layers: blind-hunter (B), edge-case-hunter (E), verification-gap (V).
+
+| # | Finding | Verdict | Evidence | Route |
+|---|---|---|---|---|
+| B1 | BK-01 expects `traceId` on 409 | medium | Assertion existed at baseline `251a8b0` (`loadtest/expected/30-booking.json:29`); tracing is not this story | defer |
+| B2/E3 | Key of a CANCELLED appointment replays as 201 | low | Real only once cancel exists; Spec07 §13 accepts "a cancelled appointment still owns its key" until then | reject |
+| B3 | Idempotency key is global, not per customer | low | Spec07 §13 decision (UNIQUE on row, no migration); scoping needs a migration, which the intent forbids | reject |
+| B4/V1 | 23503 bay/tech FK → next pair never tested | medium | No test reaches `ResourceGoneException`; a prefix typo would turn a bookable request into 503 | patch |
+| V3 | `fk_appointments_vehicle_owner` on insert → 400 untested | low | ac4 stops at the service pre-check; mapping never runs in tests | patch (with V2 unit test) |
+| V2 | 40P01 → `SlotTakenException(PAIR)` only hit by thread timing | medium | No deterministic test; removing the branch passes most CI runs | patch |
+| B5 | Multi-date outbox payload untested | false | A window over local midnight cannot pass the hours check (close is the start date's close, max 24:00), so the branch is unreachable from booking | reject |
+| B6/V4 | `max-pairs` binding / `@Positive` untested | low | Default 3 equals yml; a wrong prefix or `max-pairs: 0` would go unnoticed; fix is one small test | patch |
+| B6b | AC13 / AC20 not tagged in ITs | false | AC13 = `CandidateSelectorIT` (moved, green); AC20 = `./gradlew build` | reject |
+| B7 | Slot step not in availability cache key | low | Spec07 §5.3 accepts stale slots ≤ TTL after a step change | reject |
+| B8 | Dealership / zone read twice per booking | low | Spec07 D8 accepts the extra small indexed reads until Spec06 shows a need | reject |
+| B9 | `JdbcOutboxRepository` Javadoc has no Part 2 example | low | CLAUDE.md §4 requires two-part Javadoc on repository classes; direct fix | patch |
+| B9b | `append(..., Object payload)` weakly typed | low | Only caller passes `AppointmentBookedPayload`; contract test (ac14 payload) guards it; fix adds API | reject |
+| B10 | 40001 / 55P03 not mapped; no deadlock metric | false | Default READ COMMITTED never raises 40001 here; no `lock_timeout` set; metrics not in scope | reject |
+| B11 | Postman kiosk 409 request pinned to 2026-11-04 | low | Real, but kiosk seed is date-pinned; CI covers 409 deterministically (ac11, ac16); Postman is a manual smoke | reject |
+| B12a / E6 | `errors[].field` empty when path has only indexes (body is a JSON array) | low | `[]` body → joined names = ""; direct fix: fall back to `body` | patch |
+| B12b | Unknown `status` text → `valueOf` 500 | low | Only the app writes `status`; no reachable path | reject |
+| B12c | No test of header + body errors together | low | Each half is tested; combined path uses the same `ParameterErrors` loop | reject |
+| V5 | Replay-after-loss and 409→422 re-check only hit by timing | low | Real, but a deterministic test needs injected interleaving; fix is far more than a direct correction | reject |
+| E1 | 23503 on vehicle-type / dealership / service-type FK → 503 | low | Needs a vehicle type change or dealership delete mid-request; adds branches | reject |
+| E2 | `switch` on null SQLSTATE → NPE | false | PostgreSQL always sends field `C` (SQLSTATE) in an ErrorResponse | reject |
+| E4/E9 | Retry after `startTime` passed → 400, not replay | low | Spec07 §5.1 puts `@Future` at the edge by design; retries come seconds later | reject |
+| E5 | Start before open: grid vs hours message differs | false | Both answer 422; an unaligned start before open is off-grid by D4 | reject |
+| E7 | `ParameterErrors` global errors dropped | false | Request record has no class-level constraints | reject |
+| E8 | `@RequestHeader(name=)` not read | false | Controller uses `value` (positional); no other caller | reject |
+| E10 | No class-level `@Validated` (Spec07 §5.2) | low | Documented deviation; with it, bad keys gave 500; observable contract (400 + `errors[]`) matches §6 | reject |
 
 ## Verification
 
