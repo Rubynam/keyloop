@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.booking;
+package com.keyloop.scheduler.api.service.booking.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -10,8 +10,10 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-import com.keyloop.scheduler.api.booking.CandidateResult.Outcome;
-import com.keyloop.scheduler.api.booking.CandidateResult.Pair;
+import com.keyloop.scheduler.api.model.booking.CandidateResult;
+import com.keyloop.scheduler.api.model.booking.CandidateResult.Outcome;
+import com.keyloop.scheduler.api.model.booking.CandidateResult.Pair;
+import com.keyloop.scheduler.api.service.booking.CandidateSelector;
 import com.keyloop.scheduler.api.support.Fixtures;
 import com.keyloop.scheduler.api.support.IntegrationTest;
 import org.junit.jupiter.api.BeforeEach;

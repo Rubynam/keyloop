@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.booking;
+package com.keyloop.scheduler.api.service.booking.impl;
 
 import java.time.DateTimeException;
 import java.time.Duration;
@@ -13,32 +13,26 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import com.keyloop.scheduler.api.booking.CandidateResult.Pair;
 import com.keyloop.scheduler.api.constant.ErrorMessages;
+import com.keyloop.scheduler.api.constant.availability.AvailabilityConstants;
+import com.keyloop.scheduler.api.constant.booking.BookingConstants;
 import com.keyloop.scheduler.api.exception.NotFoundException;
 import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
+import com.keyloop.scheduler.api.model.booking.CandidateResult;
+import com.keyloop.scheduler.api.model.booking.CandidateResult.Pair;
 import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
+import com.keyloop.scheduler.api.repository.booking.CandidateRepository;
+import com.keyloop.scheduler.api.service.booking.CandidateSelector;
 import org.springframework.stereotype.Service;
 
 /**
- * Picks the (bay, technician) pairs a booking should try for one window
- * (candidate-selection.md, DLD §5, Spec04 §6). Reads PostgreSQL only, never the cache:
- * the database decides bookings. Same database state → same pairs.
- *
- * <pre>
- * Free bays (ordered) | Free techs (ordered) | Pairs
- * B1, B2, B3          | T1, T2, T3, T4       | (B1,T1) (B2,T2) (B3,T3)
- * B1                  | T1, T2, T3           | (B1,T1) (B1,T2) (B1,T3)
- * B1, B2              | T1                   | (B1,T1) (B2,T1)
- * B1, B2              | T1, T2               | (B1,T1) (B2,T2) (B1,T2)
- * </pre>
+ * {@link CandidateSelector} on PostgreSQL (candidate-selection.md, DLD §5, Spec04 §6).
+ * Steps: fitting resources, free in the window, bays with fewer vehicle types first,
+ * technicians with fewer jobs that local day first, then pairs (diagonal first).
  */
 @Service
-public class CandidateSelector {
-
-    /** Spec04 §6: a booking tries at most this many pairs. */
-    public static final int MAX_PAIRS = 3;
+public class CandidateSelectorImpl implements CandidateSelector {
 
     /** Same order as PostgreSQL {@code ORDER BY id}: unsigned bytes, which is the hex text order. */
     private static final Comparator<UUID> BY_ID = Comparator.comparing(UUID::toString);
@@ -46,15 +40,12 @@ public class CandidateSelector {
     private final AvailabilityRepository availability;
     private final CandidateRepository candidates;
 
-    public CandidateSelector(AvailabilityRepository availability, CandidateRepository candidates) {
+    public CandidateSelectorImpl(AvailabilityRepository availability, CandidateRepository candidates) {
         this.availability = availability;
         this.candidates = candidates;
     }
 
-    /**
-     * @param vehicleTypeId from the vehicle, never from the client
-     * @param start         window start; the end is {@code start + service duration}
-     */
+    @Override
     public CandidateResult select(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId, Instant start) {
         Dealership dealership = availability.findDealership(dealershipId)
                 .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_DEALERSHIP, dealershipId));
@@ -102,16 +93,16 @@ public class CandidateSelector {
     /**
      * Step 5: diagonal first, so every pair differs in both bay and technician and one
      * busy resource fails one try, not all of them; then fill from the cross product in
-     * (bay index, technician index) order, up to {@value #MAX_PAIRS}.
+     * (bay index, technician index) order, up to {@value BookingConstants#MAX_PAIRS}.
      */
     static List<Pair> pairs(List<UUID> bays, List<UUID> technicians) {
         List<Pair> pairs = new ArrayList<>();
-        int diagonal = Math.min(Math.min(bays.size(), technicians.size()), MAX_PAIRS);
+        int diagonal = Math.min(Math.min(bays.size(), technicians.size()), BookingConstants.MAX_PAIRS);
         for (int i = 0; i < diagonal; i++) {
             pairs.add(new Pair(bays.get(i), technicians.get(i)));
         }
-        for (int b = 0; b < bays.size() && pairs.size() < MAX_PAIRS; b++) {
-            for (int t = 0; t < technicians.size() && pairs.size() < MAX_PAIRS; t++) {
+        for (int b = 0; b < bays.size() && pairs.size() < BookingConstants.MAX_PAIRS; b++) {
+            for (int t = 0; t < technicians.size() && pairs.size() < BookingConstants.MAX_PAIRS; t++) {
                 Pair pair = new Pair(bays.get(b), technicians.get(t));
                 if (!pairs.contains(pair)) {
                     pairs.add(pair);
@@ -125,7 +116,7 @@ public class CandidateSelector {
         try {
             return ZoneId.of(dealership.timezone());
         } catch (DateTimeException e) {
-            throw new IllegalStateException("Dealership has an invalid time zone: " + dealership.timezone(), e);
+            throw new IllegalStateException(AvailabilityConstants.INVALID_TIME_ZONE.formatted(dealership.timezone()), e);
         }
     }
 }
