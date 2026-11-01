@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.service.booking.impl;
+package com.keyloop.scheduler.api.service.appointment.impl;
 
 import java.time.DateTimeException;
 import java.time.Duration;
@@ -15,15 +15,15 @@ import java.util.UUID;
 
 import com.keyloop.scheduler.api.constant.ErrorMessages;
 import com.keyloop.scheduler.api.constant.availability.AvailabilityConstants;
-import com.keyloop.scheduler.api.constant.booking.BookingConstants;
+import com.keyloop.scheduler.api.constant.appointment.AppointmentConstants;
 import com.keyloop.scheduler.api.exception.NotFoundException;
 import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
-import com.keyloop.scheduler.api.model.booking.CandidateResult;
-import com.keyloop.scheduler.api.model.booking.CandidateResult.Pair;
+import com.keyloop.scheduler.api.model.appointment.CandidateResult;
+import com.keyloop.scheduler.api.model.appointment.CandidateResult.Pair;
 import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
-import com.keyloop.scheduler.api.repository.booking.CandidateRepository;
-import com.keyloop.scheduler.api.service.booking.CandidateSelector;
+import com.keyloop.scheduler.api.repository.appointment.CandidateRepository;
+import com.keyloop.scheduler.api.service.appointment.CandidateSelector;
 import org.springframework.stereotype.Service;
 
 /**
@@ -93,16 +93,16 @@ public class CandidateSelectorImpl implements CandidateSelector {
     /**
      * Step 5: diagonal first, so every pair differs in both bay and technician and one
      * busy resource fails one try, not all of them; then fill from the cross product in
-     * (bay index, technician index) order, up to {@value BookingConstants#MAX_PAIRS}.
+     * (bay index, technician index) order, up to {@value AppointmentConstants#MAX_PAIRS}.
      */
     static List<Pair> pairs(List<UUID> bays, List<UUID> technicians) {
         List<Pair> pairs = new ArrayList<>();
-        int diagonal = Math.min(Math.min(bays.size(), technicians.size()), BookingConstants.MAX_PAIRS);
+        int diagonal = Math.min(Math.min(bays.size(), technicians.size()), AppointmentConstants.MAX_PAIRS);
         for (int i = 0; i < diagonal; i++) {
             pairs.add(new Pair(bays.get(i), technicians.get(i)));
         }
-        for (int b = 0; b < bays.size() && pairs.size() < BookingConstants.MAX_PAIRS; b++) {
-            for (int t = 0; t < technicians.size() && pairs.size() < BookingConstants.MAX_PAIRS; t++) {
+        for (int b = 0; b < bays.size() && pairs.size() < AppointmentConstants.MAX_PAIRS; b++) {
+            for (int t = 0; t < technicians.size() && pairs.size() < AppointmentConstants.MAX_PAIRS; t++) {
                 Pair pair = new Pair(bays.get(b), technicians.get(t));
                 if (!pairs.contains(pair)) {
                     pairs.add(pair);

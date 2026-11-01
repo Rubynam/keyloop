@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.constant.booking;
+package com.keyloop.scheduler.api.constant.appointment;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
  * </pre>
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-public final class BookingConstants {
+public final class AppointmentConstants {
 
     /** Spec04 §6: a booking tries at most this many pairs. */
     public static final int MAX_PAIRS = 3;

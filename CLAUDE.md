@@ -33,19 +33,19 @@ server-api  (com.keyloop.scheduler.api)
 ├── service/
 │   ├── availability/  AvailabilityService (interface)
 │   │   └── impl/      AvailabilityServiceImpl, SlotCalculator (pure helper)
-│   └── booking/       CandidateSelector (interface)
+│   └── appointment/ CandidateSelector (interface)
 │       └── impl/      CandidateSelectorImpl
 ├── repository/
 │   ├── availability/  AvailabilityRepository (interface)
 │   │   └── impl/      JdbcAvailabilityRepository
-│   └── booking/       CandidateRepository (interface)
+│   └── appointment/ CandidateRepository (interface)
 │       └── impl/      JdbcCandidateRepository
 ├── cache/             Redis ports, same shape as repository/
 │   └── availability/  AvailabilityCache (interface)
 │       └── impl/      RedisAvailabilityCache
 ├── model/             shared types (AppointmentStatus)
 │   ├── availability/  Dealership, Booking, Interval (rows used by service + repository)
-│   └── booking/       CandidateResult
+│   └── appointment/ CandidateResult
 ├── dto/
 │   ├── availability/  AvailabilityResponse (HTTP only)
 │   └── ping/          PingResponse
@@ -53,7 +53,7 @@ server-api  (com.keyloop.scheduler.api)
 │   └── availability/  InvalidRangeException
 ├── constant/          ApiPaths, HeaderNames, ErrorMessages (shared)
 │   ├── availability/  AvailabilityConstants
-│   └── booking/       BookingConstants
+│   └── appointment/   AppointmentConstants
 ├── config/            ClockConfig
 │   └── availability/  AvailabilityConfig, AvailabilityCacheProperties
 └── web/               ApiExceptionHandler, RequestIdFilter (cross-cutting HTTP infra)

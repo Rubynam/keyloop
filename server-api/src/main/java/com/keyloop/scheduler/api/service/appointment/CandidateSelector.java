@@ -1,10 +1,10 @@
-package com.keyloop.scheduler.api.service.booking;
+package com.keyloop.scheduler.api.service.appointment;
 
 import java.time.Instant;
 import java.util.UUID;
 
 import com.keyloop.scheduler.api.exception.NotFoundException;
-import com.keyloop.scheduler.api.model.booking.CandidateResult;
+import com.keyloop.scheduler.api.model.appointment.CandidateResult;
 
 /**
  * Picks the (bay, technician) pairs a booking should try for one time window. The

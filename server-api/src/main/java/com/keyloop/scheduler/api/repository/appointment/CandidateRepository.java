@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.repository.booking;
+package com.keyloop.scheduler.api.repository.appointment;
 
 import java.time.Instant;
 import java.util.Collection;
