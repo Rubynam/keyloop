@@ -112,6 +112,13 @@ class BookingCustomer(ScenarioUser):
     wait_time = between(2, 5)
 
 
+class RampCustomer(ScenarioUser):
+    """Exactly one request per second per user, so users = requests/s: RampShape caps the
+    run at RAMP_MAX_RPS (100) and the RPS curve is the user curve."""
+    suites = ("70-ramp",)
+    wait_time = constant_throughput(1)
+
+
 class AbusiveClient(ScenarioUser):
     """One client hammering availability from a single IP: must get 429, not slow everyone."""
     suites = ("50-rate-limit",)
@@ -152,8 +159,9 @@ PROFILES = {
     "spike": (BrowsingCustomer, BookingCustomer),
     "abuse": (AbusiveClient,),
     "race": (RaceUser,),
+    "ramp": (RampCustomer,),
 }
-for _cls in (SmokeUser, BrowsingCustomer, BookingCustomer, AbusiveClient, RaceUser):
+for _cls in (SmokeUser, BrowsingCustomer, BookingCustomer, RampCustomer, AbusiveClient, RaceUser):
     _cls.abstract = _cls not in PROFILES[PROFILE]
 del _cls                                        # Locust collects classes from module globals
 
@@ -180,6 +188,22 @@ elif PROFILE == "spike":
         """Calm, sudden 10x burst, calm again: does it recover without errors? (§4.4)"""
         abstract = False
         stages = ((60, 20, 5), (90, 200, 100), (150, 200, 100), (210, 20, 50), (240, 0, 20))
+
+elif PROFILE == "ramp":
+    class RampShape(LoadTestShape):
+        """Linear ramp 0 → RAMP_MAX_RPS requests/s, hold at the top, then stop.
+        One RampCustomer = 1 request/s, so the target user count is the target RPS."""
+        max_rps = int(os.getenv("RAMP_MAX_RPS", "100"))
+        ramp_s = int(os.getenv("RAMP_UP_SECONDS", "300"))
+        hold_s = int(os.getenv("RAMP_HOLD_SECONDS", "180"))
+
+        def tick(self):
+            t = self.get_run_time()
+            if t < self.ramp_s:
+                return max(1, round(self.max_rps * t / self.ramp_s)), self.max_rps
+            if t < self.ramp_s + self.hold_s:
+                return self.max_rps, self.max_rps
+            return None
 
 
 @events.init.add_listener
