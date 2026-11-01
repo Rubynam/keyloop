@@ -1,0 +1,88 @@
+{
+  "suite": "81-book-burst",
+  "inputFile": "input/81-book-burst.json",
+  "_doc": "Expected output per case id of the input file. 'expect' checks each response; 'aggregate' counts every status of the case over the run (the 201 / 409 / 422 mix); 'perWave' is the status count ONE wave must end with. A wave with more 201s than perWave says is a double booking; fewer is a customer turned away (409) while a pair was still free. No traceId on 409 yet (deferred, Spec07 triage B1).",
+  "cases": [
+    {
+      "id": "BB-01",
+      "goal": "Capacity 1 (London Park Royal, oil change: ONE technician). 10 cars want the same hour at the same instant → 1 x 201, 9 x 409.",
+      "expect": {
+        "status": [201, 409],
+        "onStatus": {
+          "201": {
+            "headers": {"Location": {"matches": "/api/v1/appointments/[0-9a-f-]{36}$"}},
+            "body": [{"path": "status", "equals": "CONFIRMED"}, {"path": "startTime", "equals": "{{start}}"}, {"path": "vehicleId", "equals": "{{v.vehicleId}}"}]
+          },
+          "409": {"headers": {"Content-Type": {"matches": "^application/problem\\+json"}}, "body": [{"path": "status", "equals": 409}]}
+        }
+      },
+      "aggregate": {"allowed": [201, 409]},
+      "perWave": {"201": 1, "409": 9}
+    },
+    {
+      "id": "BB-02",
+      "goal": "Capacity 1 at a +05:45 zone (Kathmandu, oil change: one technician, two bays). 10 cars, same instant → 1 x 201, 9 x 409. The free bay must not let a second car in.",
+      "expect": {
+        "status": [201, 409],
+        "onStatus": {
+          "201": {"body": [{"path": "status", "equals": "CONFIRMED"}, {"path": "startTime", "equals": "{{start}}"}]},
+          "409": {"headers": {"Content-Type": {"matches": "^application/problem\\+json"}}, "body": [{"path": "status", "equals": 409}]}
+        }
+      },
+      "aggregate": {"allowed": [201, 409]},
+      "perWave": {"201": 1, "409": 9}
+    },
+    {
+      "id": "BB-03",
+      "goal": "Capacity 2 (Q7, diagnostics: two technicians, seven bays). 12 cars, same instant → 2 x 201, 10 x 409.",
+      "expect": {
+        "status": [201, 409],
+        "onStatus": {
+          "201": {"body": [{"path": "status", "equals": "CONFIRMED"}, {"path": "startTime", "equals": "{{start}}"}]},
+          "409": {"headers": {"Content-Type": {"matches": "^application/problem\\+json"}}, "body": [{"path": "status", "equals": 409}]}
+        }
+      },
+      "aggregate": {"allowed": [201, 409]},
+      "perWave": {"201": 2, "409": 10}
+    },
+    {
+      "id": "BB-04",
+      "goal": "Capacity 6 (Q7, tyre rotation: six technicians, seven bays), more than max-pairs (3). 20 cars, same instant → 6 x 201, 14 x 409. Fewer 201s = a customer got 409 while a pair was still free.",
+      "expect": {
+        "status": [201, 409],
+        "onStatus": {
+          "201": {"body": [{"path": "status", "equals": "CONFIRMED"}, {"path": "startTime", "equals": "{{start}}"}]},
+          "409": {"headers": {"Content-Type": {"matches": "^application/problem\\+json"}}, "body": [{"path": "status", "equals": 409}]}
+        }
+      },
+      "aggregate": {"allowed": [201, 409]},
+      "perWave": {"201": 6, "409": 14}
+    },
+    {
+      "id": "BB-05",
+      "goal": "Capacity 7 (Q7, oil change: seven technicians, seven bays), the hottest slot. 25 cars, same instant → 7 x 201, 18 x 409.",
+      "expect": {
+        "status": [201, 409],
+        "onStatus": {
+          "201": {"body": [{"path": "status", "equals": "CONFIRMED"}, {"path": "startTime", "equals": "{{start}}"}]},
+          "409": {"headers": {"Content-Type": {"matches": "^application/problem\\+json"}}, "body": [{"path": "status", "equals": 409}]}
+        }
+      },
+      "aggregate": {"allowed": [201, 409]},
+      "perWave": {"201": 7, "409": 18}
+    },
+    {
+      "id": "BB-06",
+      "goal": "One car, six NEW keys, same instant, on a capacity-7 slot (Q7 oil change) → 1 x 201, 5 x 422 (Spec07 D2): free pairs must not let one car in twice.",
+      "expect": {
+        "status": [201, 422],
+        "onStatus": {
+          "201": {"body": [{"path": "status", "equals": "CONFIRMED"}, {"path": "vehicleId", "equals": "{{v.vehicleId}}"}]},
+          "422": {"headers": {"Content-Type": {"matches": "^application/problem\\+json"}}, "body": [{"path": "status", "equals": 422}]}
+        }
+      },
+      "aggregate": {"allowed": [201, 422]},
+      "perWave": {"201": 1, "422": 5}
+    }
+  ]
+}

@@ -6,9 +6,11 @@
 #   loadtest/run-ramp.sh                       # ramp 300 s, hold 180 s at 100 RPS
 #   RAMP_UP_SECONDS=120 RAMP_HOLD_SECONDS=60 loadtest/run-ramp.sh
 #   LOADTEST_PROFILE=book-ramp loadtest/run-ramp.sh   # same ramp on POST /appointments (Spec07)
+#   LOADTEST_PROFILE=book-burst loadtest/run-ramp.sh  # same-slot waves at 150 RPS: 30 s ramp, 240 s hold
 #
 # Profile 'ramp' reads availability while the simulator writes bookings into PostgreSQL.
 # Profile 'book-ramp' books through the API itself, so the simulator is off (SIMULATOR=0).
+# Profile 'book-burst' too; it adds verify/book-burst.sql (bookings per slot vs capacity).
 #
 # Output: loadtest/reports/<profile>-<timestamp>/ (git-ignored). Exit code 1 when the analysis
 # reports a high-severity finding or Locust misses a budget.
@@ -19,7 +21,9 @@ export LOADTEST_PROFILE=${LOADTEST_PROFILE:-ramp}
 case "$LOADTEST_PROFILE" in
   ramp) SIMULATOR=${SIMULATOR:-1} ;;
   book-ramp) SIMULATOR=${SIMULATOR:-0} ;;
-  *) echo "run-ramp.sh: profile '$LOADTEST_PROFILE' has no RampShape (use ramp or book-ramp)" >&2; exit 2 ;;
+  book-burst) SIMULATOR=${SIMULATOR:-0}
+    RAMP_MAX_RPS=${RAMP_MAX_RPS:-150} RAMP_UP_SECONDS=${RAMP_UP_SECONDS:-30} RAMP_HOLD_SECONDS=${RAMP_HOLD_SECONDS:-240} ;;
+  *) echo "run-ramp.sh: profile '$LOADTEST_PROFILE' has no load shape (use ramp, book-ramp or book-burst)" >&2; exit 2 ;;
 esac
 export RAMP_MAX_RPS=${RAMP_MAX_RPS:-100}
 export RAMP_UP_SECONDS=${RAMP_UP_SECONDS:-300}
@@ -115,6 +119,9 @@ PY
 
 step "post-run probes"
 psql -v since="'1 hour'" < loadtest/verify/invariants.sql > "$RUN/invariants.txt" 2>&1 || true
+if [ "$LOADTEST_PROFILE" = book-burst ]; then
+  psql -v start="$START" < loadtest/verify/book-burst.sql > "$RUN/burst_check.txt" 2>&1 || true
+fi
 {
   echo "total|pending|failed|lag_p50_ms|lag_p95_ms|lag_max_ms   (outbox events of this run: created → processed)"
   psql -At -F '|' -c "

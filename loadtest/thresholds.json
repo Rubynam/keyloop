@@ -69,6 +69,18 @@
         "/api/v1/appointments [unprocessable]":{ "p95": 300, "maxFailRatio": 0 },
         "/api/v1/availability [hot]":          { "p50": 30, "p95": 150, "p99": 400, "maxFailRatio": 0.001 }
       }
+    },
+    "book-burst": {
+      "_note": "Waves of N customers on ONE slot at the same instant, 150 requests/s (BurstShape). 409/422 are expected outputs. 'waves': every wave must end with its perWave count (expected/81-book-burst.json); a wave with too many 201s always fails.",
+      "global": { "maxFailRatio": 0.01, "max5xx": 0 },
+      "waves": { "minExactRatio": 1.0 },
+      "endpoints": {
+        "/api/v1/appointments [burst cap1]":     { "p50": 150, "p95": 800, "p99": 1500, "maxFailRatio": 0.01 },
+        "/api/v1/appointments [burst cap2]":     { "p50": 150, "p95": 800, "p99": 1500, "maxFailRatio": 0.01 },
+        "/api/v1/appointments [burst cap6]":     { "p50": 150, "p95": 800, "p99": 1500, "maxFailRatio": 0.01 },
+        "/api/v1/appointments [burst cap7]":     { "p50": 150, "p95": 800, "p99": 1500, "minRequests": 1000, "maxFailRatio": 0.01 },
+        "/api/v1/appointments [burst same-car]": { "p50": 150, "p95": 800, "p99": 1500, "maxFailRatio": 0.01 }
+      }
     }
   }
 }

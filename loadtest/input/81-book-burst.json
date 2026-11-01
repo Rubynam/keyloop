@@ -1,0 +1,166 @@
+{
+  "suite": "81-book-burst",
+  "goal": "Contention at 150 requests/s on the booking API (Spec07, POST /api/v1/appointments): bookings arrive in WAVES. In one wave N different customers book the SAME slot (dealership, service type, start) at the same instant, held at a gevent gate and released together. Per wave exactly `capacity` get 201 and the rest 409; never 5xx, never a double booking.",
+  "precondition": "LOADTEST_PROFILE=book-burst loadtest/run-ramp.sh (fresh build, seeding/seed.sh). Wave k of a case gets slot k of its own day range: slots are a whole step apart (step ≥ service duration) and the day ranges of the cases do not overlap, so waves never compete with each other (Q7 technicians serve several services) and a car that wins in two waves is never busy twice. Reseed before running Locust again: a second run would reuse the same slots.",
+  "expectedFile": "expected/81-book-burst.json",
+  "_doc": "Input requests. A case with 'wave' is sent as one wave per pick: 'clients' requests, one per car (sameVehicle: one car for all), all with the slot of this wave in {{start}} and the car in {{v}}; 'bind' is applied per client. 'capacity' = min(bays taking the vehicle type, technicians with the skill and the vehicle type) on an empty day, from the seed (verify/book-burst.sql prints it again per slot). Weights are percent of wave picks; with these weights a wave holds 15.65 requests on average.",
+  "cases": [
+    {
+      "id": "BB-01",
+      "goal": "Capacity 1 (London Park Royal, oil change: ONE technician). 10 cars want the same hour at the same instant → 1 x 201, 9 x 409.",
+      "verifies": ["Spec03 DB-01 ex_appointments_technician", "Spec07 §1 goal 2"],
+      "weight": 20,
+      "wave": {
+        "clients": 10,
+        "capacity": 1,
+        "vehicleType": "GASOLINE_CAR",
+        "slot": {"tz": "Europe/London", "days": [1100, 1499], "open": "08:00", "lastStart": "17:00", "stepMinutes": 60}
+      },
+      "bind": {"key": "uuid"},
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/appointments",
+        "name": "/api/v1/appointments [burst cap1]",
+        "headers": {"Idempotency-Key": "{{key}}"},
+        "body": {
+          "customerId": "{{v.customerId}}",
+          "vehicleId": "{{v.vehicleId}}",
+          "dealershipId": "{{ref.dealerships.LONDON}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "startTime": "{{start}}"
+        }
+      }
+    },
+    {
+      "id": "BB-02",
+      "goal": "Capacity 1 at a +05:45 zone (Kathmandu, oil change: one technician, two bays). 10 cars, same instant → 1 x 201, 9 x 409. The free bay must not let a second car in.",
+      "verifies": ["Spec03 DB-01", "DLD §5 retry next pair"],
+      "weight": 10,
+      "wave": {
+        "clients": 10,
+        "capacity": 1,
+        "vehicleType": "GASOLINE_CAR",
+        "slot": {"tz": "Asia/Kathmandu", "days": [1500, 1899], "open": "09:00", "lastStart": "16:00", "stepMinutes": 60}
+      },
+      "bind": {"key": "uuid"},
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/appointments",
+        "name": "/api/v1/appointments [burst cap1]",
+        "headers": {"Idempotency-Key": "{{key}}"},
+        "body": {
+          "customerId": "{{v.customerId}}",
+          "vehicleId": "{{v.vehicleId}}",
+          "dealershipId": "{{ref.dealerships.KATHMANDU}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "startTime": "{{start}}"
+        }
+      }
+    },
+    {
+      "id": "BB-03",
+      "goal": "Capacity 2 (Q7, diagnostics: two technicians, seven bays). 12 cars, same instant → 2 x 201, 10 x 409.",
+      "verifies": ["Spec03 DB-01 DB-02", "Spec04 §6 max-pairs"],
+      "weight": 15,
+      "wave": {
+        "clients": 12,
+        "capacity": 2,
+        "vehicleType": "GASOLINE_CAR",
+        "slot": {"tz": "Asia/Ho_Chi_Minh", "days": [1900, 2299], "open": "08:00", "lastStart": "16:00", "stepMinutes": 60}
+      },
+      "bind": {"key": "uuid"},
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/appointments",
+        "name": "/api/v1/appointments [burst cap2]",
+        "headers": {"Idempotency-Key": "{{key}}"},
+        "body": {
+          "customerId": "{{v.customerId}}",
+          "vehicleId": "{{v.vehicleId}}",
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.DIAGNOSTICS}}",
+          "startTime": "{{start}}"
+        }
+      }
+    },
+    {
+      "id": "BB-04",
+      "goal": "Capacity 6 (Q7, tyre rotation: six technicians, seven bays), more than max-pairs (3). 20 cars, same instant → 6 x 201, 14 x 409. Fewer 201s = a customer got 409 while a pair was still free.",
+      "verifies": ["Spec04 §6 max-pairs", "candidate-selection.md diagonal pairs", "Spec03 DB-01 DB-02"],
+      "weight": 20,
+      "wave": {
+        "clients": 20,
+        "capacity": 6,
+        "vehicleType": "GASOLINE_CAR",
+        "slot": {"tz": "Asia/Ho_Chi_Minh", "days": [2300, 2699], "open": "08:00", "lastStart": "16:00", "stepMinutes": 60}
+      },
+      "bind": {"key": "uuid"},
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/appointments",
+        "name": "/api/v1/appointments [burst cap6]",
+        "headers": {"Idempotency-Key": "{{key}}"},
+        "body": {
+          "customerId": "{{v.customerId}}",
+          "vehicleId": "{{v.vehicleId}}",
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.TYRE_ROTATION}}",
+          "startTime": "{{start}}"
+        }
+      }
+    },
+    {
+      "id": "BB-05",
+      "goal": "Capacity 7 (Q7, oil change: seven technicians, seven bays), the hottest slot. 25 cars, same instant → 7 x 201, 18 x 409.",
+      "verifies": ["Spec04 §6 max-pairs", "Spec03 DB-01 DB-02", "Spec07 §1 goal 2"],
+      "weight": 25,
+      "wave": {
+        "clients": 25,
+        "capacity": 7,
+        "vehicleType": "GASOLINE_CAR",
+        "slot": {"tz": "Asia/Ho_Chi_Minh", "days": [2700, 3099], "open": "08:00", "lastStart": "16:00", "stepMinutes": 60}
+      },
+      "bind": {"key": "uuid"},
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/appointments",
+        "name": "/api/v1/appointments [burst cap7]",
+        "headers": {"Idempotency-Key": "{{key}}"},
+        "body": {
+          "customerId": "{{v.customerId}}",
+          "vehicleId": "{{v.vehicleId}}",
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "startTime": "{{start}}"
+        }
+      }
+    },
+    {
+      "id": "BB-06",
+      "goal": "One car, six NEW keys, same instant, on a capacity-7 slot (Q7 oil change) → 1 x 201, 5 x 422 (Spec07 D2): free pairs must not let one car in twice.",
+      "verifies": ["Spec07 D2", "Spec03 DB-03 ex_appointments_vehicle"],
+      "weight": 10,
+      "wave": {
+        "clients": 6,
+        "capacity": 7,
+        "sameVehicle": true,
+        "vehicleType": "GASOLINE_CAR",
+        "slot": {"tz": "Asia/Ho_Chi_Minh", "days": [3100, 3499], "open": "08:00", "lastStart": "16:00", "stepMinutes": 60}
+      },
+      "bind": {"key": "uuid"},
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/appointments",
+        "name": "/api/v1/appointments [burst same-car]",
+        "headers": {"Idempotency-Key": "{{key}}"},
+        "body": {
+          "customerId": "{{v.customerId}}",
+          "vehicleId": "{{v.vehicleId}}",
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "startTime": "{{start}}"
+        }
+      }
+    }
+  ]
+}
