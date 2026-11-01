@@ -3,14 +3,12 @@ package com.keyloop.scheduler.api.model.appointment;
 import java.util.List;
 import java.util.UUID;
 
-import com.keyloop.scheduler.api.constant.appointment.AppointmentConstants;
-
 /**
  * Answer of {@code CandidateSelector}: which (bay, technician) pairs a booking should try,
  * in order, or why there are none (candidate-selection.md).
  *
  * @param outcome why the list is empty, or {@code PAIRS}
- * @param pairs   at most {@value AppointmentConstants#MAX_PAIRS} pairs; empty unless {@code PAIRS}
+ * @param pairs   at most {@code scheduler.booking.max-pairs} pairs; empty unless {@code PAIRS}
  */
 public record CandidateResult(Outcome outcome, List<Pair> pairs) {
 

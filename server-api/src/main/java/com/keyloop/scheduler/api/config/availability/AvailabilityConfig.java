@@ -8,7 +8,8 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.script.RedisScript;
 
 /**
- * Beans of the availability read path: the cache timings and the lock release script.
+ * Beans of the availability read path: the slot grid, the cache timings and the lock
+ * release script.
  * The clock lives in {@link com.keyloop.scheduler.api.config.ClockConfig}. Spec05 RF-10.
  *
  * <pre>
@@ -16,7 +17,7 @@ import org.springframework.data.redis.core.script.RedisScript;
  * </pre>
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(AvailabilityCacheProperties.class)
+@EnableConfigurationProperties({AvailabilityCacheProperties.class, AvailabilityProperties.class})
 public class AvailabilityConfig {
 
     /**

@@ -13,9 +13,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import com.keyloop.scheduler.api.config.appointment.BookingProperties;
 import com.keyloop.scheduler.api.constant.ErrorMessages;
 import com.keyloop.scheduler.api.constant.availability.AvailabilityConstants;
-import com.keyloop.scheduler.api.constant.appointment.AppointmentConstants;
 import com.keyloop.scheduler.api.exception.NotFoundException;
 import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
@@ -39,10 +39,13 @@ public class CandidateSelectorImpl implements CandidateSelector {
 
     private final AvailabilityRepository availability;
     private final CandidateRepository candidates;
+    private final BookingProperties properties;
 
-    public CandidateSelectorImpl(AvailabilityRepository availability, CandidateRepository candidates) {
+    public CandidateSelectorImpl(AvailabilityRepository availability, CandidateRepository candidates,
+                                 BookingProperties properties) {
         this.availability = availability;
         this.candidates = candidates;
+        this.properties = properties;
     }
 
     @Override
@@ -87,22 +90,22 @@ public class CandidateSelectorImpl implements CandidateSelector {
                 .sorted(Comparator.<UUID>comparingInt(id -> jobs.getOrDefault(id, 0)).thenComparing(BY_ID))
                 .toList();
 
-        return CandidateResult.of(pairs(orderedBays, orderedTechnicians));
+        return CandidateResult.of(pairs(orderedBays, orderedTechnicians, properties.maxPairs()));
     }
 
     /**
      * Step 5: diagonal first, so every pair differs in both bay and technician and one
      * busy resource fails one try, not all of them; then fill from the cross product in
-     * (bay index, technician index) order, up to {@value AppointmentConstants#MAX_PAIRS}.
+     * (bay index, technician index) order, up to {@code maxPairs} ({@code scheduler.booking.max-pairs}).
      */
-    static List<Pair> pairs(List<UUID> bays, List<UUID> technicians) {
+    static List<Pair> pairs(List<UUID> bays, List<UUID> technicians, int maxPairs) {
         List<Pair> pairs = new ArrayList<>();
-        int diagonal = Math.min(Math.min(bays.size(), technicians.size()), AppointmentConstants.MAX_PAIRS);
+        int diagonal = Math.min(Math.min(bays.size(), technicians.size()), maxPairs);
         for (int i = 0; i < diagonal; i++) {
             pairs.add(new Pair(bays.get(i), technicians.get(i)));
         }
-        for (int b = 0; b < bays.size() && pairs.size() < AppointmentConstants.MAX_PAIRS; b++) {
-            for (int t = 0; t < technicians.size() && pairs.size() < AppointmentConstants.MAX_PAIRS; t++) {
+        for (int b = 0; b < bays.size() && pairs.size() < maxPairs; b++) {
+            for (int t = 0; t < technicians.size() && pairs.size() < maxPairs; t++) {
                 Pair pair = new Pair(bays.get(b), technicians.get(t));
                 if (!pairs.contains(pair)) {
                     pairs.add(pair);

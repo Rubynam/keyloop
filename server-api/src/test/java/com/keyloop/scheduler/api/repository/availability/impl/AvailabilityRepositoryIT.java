@@ -3,6 +3,7 @@ package com.keyloop.scheduler.api.repository.availability.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
+import com.keyloop.scheduler.api.config.availability.AvailabilityProperties;
 import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse;
 import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse.Slot;
 import com.keyloop.scheduler.api.model.availability.Booking;
@@ -36,6 +38,7 @@ class AvailabilityRepositoryIT extends IntegrationTest {
 
     private static final LocalDate DAY = LocalDate.of(2030, 1, 7);
     private static final Clock LONG_AGO = Clock.fixed(Instant.parse("2020-01-01T00:00:00Z"), ZoneOffset.UTC);
+    private static final AvailabilityProperties STEP_15 = new AvailabilityProperties(Duration.ofMinutes(15));
 
     @Autowired
     private JdbcClient jdbc;
@@ -107,7 +110,7 @@ class AvailabilityRepositoryIT extends IntegrationTest {
 
     @Test
     void serviceBlocksConfirmedOffersCancelledBackToBackAndMidnightEnd() {
-        AvailabilityResponse response = new AvailabilityServiceImpl(repository, new PassThroughAvailabilityCache(), LONG_AGO)
+        AvailabilityResponse response = new AvailabilityServiceImpl(repository, new PassThroughAvailabilityCache(), LONG_AGO, STEP_15)
                 .find(dealer, service, vehicleType, DAY, DAY);
 
         assertThat(response.timezone()).isEqualTo("UTC");

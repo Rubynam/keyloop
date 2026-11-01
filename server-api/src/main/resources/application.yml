@@ -34,6 +34,8 @@ spring:
 scheduler:
   # spec-availability-ops, cache-read-path.md. Slot-list TTL stays far below the 2-day version-key TTL.
   availability:
+    # Slot grid for availability AND booking (Spec07 D4). Must divide 24h; a bad value fails at boot.
+    slot-step: 15m
     cache:
       enabled: true
       ttl: 30s
@@ -41,6 +43,9 @@ scheduler:
       lock-ttl: 2s         # rebuild lock (PX); expires by itself if its owner dies
       lock-wait: 100ms     # a waiter then computes from PostgreSQL without writing the cache
       poll-interval: 10ms
+  booking:
+    # Spec04 §6: (bay, technician) pairs tried, one transaction each, before 409
+    max-pairs: 3
 
 management:
   endpoints:

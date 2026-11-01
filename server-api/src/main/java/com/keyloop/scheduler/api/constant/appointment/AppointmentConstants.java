@@ -4,16 +4,36 @@ import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
 /**
- * Fixed values of the booking path. A booking tries a short list of (bay, technician)
- * pairs, and this caps the list. Spec04 §6, candidate-selection.md.
+ * Fixed values of the booking path: the key length limit and the error text of every
+ * booking refusal. Clients and tests read this text, so do not change a character.
+ * Spec07 §6, Spec04 §6.
  *
  * <pre>
- * free bays [B1, B2, B3, B4] × free techs [T1, T2, T3, T4]  →  at most MAX_PAIRS = 3 pairs
+ * OFF_SLOT_GRID.formatted(15)  →  "The start time must be on a 15-minute slot."
+ * BOOKING_FAILED               →  409 detail when every pair is taken
  * </pre>
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class AppointmentConstants {
 
-    /** Spec04 §6: a booking tries at most this many pairs. */
-    public static final int MAX_PAIRS = 3;
+    /** Column {@code appointments.idempotency_key} is VARCHAR(128). */
+    public static final int IDEMPOTENCY_KEY_MAX = 128;
+
+    public static final String VEHICLE_OWNER_MISMATCH = "The vehicle does not belong to this customer.";
+    public static final String VEHICLE_BUSY = "The vehicle already has an appointment at this time.";
+    public static final String IDEMPOTENCY_KEY_MISMATCH =
+            "This Idempotency-Key was already used for a different request.";
+    public static final String NOT_SERVICEABLE = "No bay or technician at this dealership can service this vehicle.";
+    public static final String OUTSIDE_BUSINESS_HOURS = "The time is outside the dealership's business hours.";
+    public static final String OFF_SLOT_GRID = "The start time must be on a %d-minute slot.";
+
+    /** Spec04 §6: title and detail of the 409 after every pair failed. */
+    public static final String BOOKING_FAILED_TITLE = "Booking failed";
+    public static final String BOOKING_FAILED = "Booking failed: no technician or service bay is available for the "
+            + "requested time. Please choose another slot.";
+
+    /** Internal signals, never shown to a client. */
+    public static final String SLOT_TAKEN = "Slot already taken: %s";
+    public static final String RESOURCE_GONE = "Bay or technician no longer fits: %s";
+    public static final String DUPLICATE_IDEMPOTENCY_KEY = "Idempotency-Key already stored";
 }
