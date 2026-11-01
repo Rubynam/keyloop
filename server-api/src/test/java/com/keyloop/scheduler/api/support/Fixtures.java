@@ -64,15 +64,30 @@ public final class Fixtures {
         return id;
     }
 
+    public UUID customer() {
+        return id("INSERT INTO customers (name, email) VALUES ('IT customer', ?) RETURNING id",
+                code("c").toLowerCase() + "@example.com");
+    }
+
+    /** A vehicle of a new car model with the given type, owned by {@code customer}. */
+    public UUID vehicle(UUID customer, UUID vehicleType) {
+        UUID carInfo = id("INSERT INTO car_info (name, vehicle_type_id, brand) VALUES (?, ?, 'IT') RETURNING id",
+                code("M"), vehicleType);
+        return id("INSERT INTO vehicles (customer_id, car_info_id, vehicle_type_id, vin, year)"
+                + " VALUES (?, ?, ?, ?, 2024) RETURNING id", customer, carInfo, vehicleType, vin());
+    }
+
     /** An appointment of a new customer and vehicle, so the vehicle exclusion never gets in the way. */
     public UUID appointment(UUID dealership, UUID serviceType, UUID vehicleType, UUID bay, UUID technician,
                             OffsetDateTime start, OffsetDateTime end, String status) {
-        UUID customer = id("INSERT INTO customers (name, email) VALUES ('IT customer', ?) RETURNING id",
-                code("c").toLowerCase() + "@example.com");
-        UUID carInfo = id("INSERT INTO car_info (name, vehicle_type_id, brand) VALUES (?, ?, 'IT') RETURNING id",
-                code("M"), vehicleType);
-        UUID vehicle = id("INSERT INTO vehicles (customer_id, car_info_id, vehicle_type_id, vin, year)"
-                + " VALUES (?, ?, ?, ?, 2024) RETURNING id", customer, carInfo, vehicleType, vin());
+        UUID customer = customer();
+        return appointment(customer, vehicle(customer, vehicleType), dealership, serviceType, vehicleType, bay,
+                technician, start, end, status);
+    }
+
+    /** An appointment of a known customer and vehicle. */
+    public UUID appointment(UUID customer, UUID vehicle, UUID dealership, UUID serviceType, UUID vehicleType,
+                            UUID bay, UUID technician, OffsetDateTime start, OffsetDateTime end, String status) {
         return id("""
                         INSERT INTO appointments (customer_id, vehicle_id, dealership_id, service_type_id, technician_id,
                                                   service_bay_id, vehicle_type_id, start_time, end_time, status)
