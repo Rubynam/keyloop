@@ -31,6 +31,9 @@ replay_pid*
 .gradle/
 build/
 
+# BMAD install (local tooling, per machine)
+_bmad/
+
 # Local secrets
 .env
 
