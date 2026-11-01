@@ -18,6 +18,8 @@ import com.keyloop.scheduler.api.availability.AvailabilityRepository.Booking;
 import com.keyloop.scheduler.api.availability.AvailabilityRepository.Dealership;
 import com.keyloop.scheduler.api.availability.AvailabilityResponse.Slot;
 import com.keyloop.scheduler.api.availability.SlotCalculator.Interval;
+import com.keyloop.scheduler.api.constant.ErrorMessages;
+import com.keyloop.scheduler.api.exception.NotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -63,11 +65,11 @@ public class AvailabilityService {
         AvailabilityCache.Lookup lookup = cache.lookup(dealershipId, serviceTypeId, vehicleTypeId, dates);
 
         Dealership dealership = repository.findDealership(dealershipId)
-                .orElseThrow(() -> new NotFoundException("Dealership", dealershipId));
+                .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_DEALERSHIP, dealershipId));
         int duration = repository.findServiceDurationMinutes(serviceTypeId)
-                .orElseThrow(() -> new NotFoundException("Service type", serviceTypeId));
+                .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_SERVICE_TYPE, serviceTypeId));
         if (!repository.vehicleTypeExists(vehicleTypeId)) {
-            throw new NotFoundException("Vehicle type", vehicleTypeId);
+            throw new NotFoundException(ErrorMessages.ENTITY_VEHICLE_TYPE, vehicleTypeId);
         }
         ZoneId zone = zoneOf(dealership);
 

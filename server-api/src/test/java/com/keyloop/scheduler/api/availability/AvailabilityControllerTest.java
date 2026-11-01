@@ -18,6 +18,7 @@ import java.util.UUID;
 
 import com.keyloop.scheduler.api.availability.AvailabilityResponse.Day;
 import com.keyloop.scheduler.api.availability.AvailabilityResponse.Slot;
+import com.keyloop.scheduler.api.exception.NotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -86,7 +87,7 @@ class AvailabilityControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.title").value("Not Found"))
-                .andExpect(jsonPath("$.detail").value(containsString(DEALER.toString())));
+                .andExpect(jsonPath("$.detail").value("Dealership " + DEALER + " not found"));
     }
 
     @Test
@@ -97,7 +98,9 @@ class AvailabilityControllerTest {
         mockMvc.perform(request("2026-11-02", "2026-11-01"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.status").value(400));
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.title").value("Bad Request"))
+                .andExpect(jsonPath("$.detail").value("'to' is before 'from'"));
     }
 
     @Test
@@ -146,6 +149,8 @@ class AvailabilityControllerTest {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.title").value("Service Unavailable"))
+                .andExpect(jsonPath("$.detail").value("The service is temporarily unavailable, please retry later."))
                 .andExpect(content().string(not(containsString("10.0.0.5"))));
     }
 
@@ -158,6 +163,8 @@ class AvailabilityControllerTest {
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(500))
+                .andExpect(jsonPath("$.title").value("Internal Server Error"))
+                .andExpect(jsonPath("$.detail").value("An unexpected error occurred."))
                 .andExpect(content().string(not(containsString("secret"))));
     }
 }

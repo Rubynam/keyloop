@@ -1,4 +1,4 @@
-package com.keyloop.scheduler.api.domain;
+package com.keyloop.scheduler.api.model;
 
 /**
  * Appointment lifecycle (DLD §9). Stored by name in appointments.status.
