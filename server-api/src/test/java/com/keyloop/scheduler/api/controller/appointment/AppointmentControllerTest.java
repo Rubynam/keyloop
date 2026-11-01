@@ -176,6 +176,15 @@ class AppointmentControllerTest {
     }
 
     @Test
+    void jsonArrayBodyIs400OnBody() throws Exception {
+        mockMvc.perform(book(KEY, "[]"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Invalid request"))
+                .andExpect(jsonPath("$.errors[0].field").value("body"));
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void missingKeyIs400() throws Exception {
         mockMvc.perform(book(null, validBody()))
                 .andExpect(status().isBadRequest())

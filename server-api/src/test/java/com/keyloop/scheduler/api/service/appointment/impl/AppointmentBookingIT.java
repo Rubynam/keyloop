@@ -303,6 +303,38 @@ class AppointmentBookingIT extends IntegrationTest {
     }
 
     @Test
+    void firstPairLosesItsFitThenSecondPairIsBooked() throws Exception {
+        fixtures.bay(dealer, vehicleType);
+        fixtures.bay(dealer, vehicleType);
+        fixtures.technician(dealer, service, vehicleType);
+        fixtures.technician(dealer, service, vehicleType);
+        List<NewAppointment> tried = new ArrayList<>();
+        doAnswer(invocation -> {
+            NewAppointment a = invocation.getArgument(0);
+            if (tried.isEmpty()) {
+                // After the candidate read, the bay stops taking this vehicle type (committed
+                // on another connection): fk_appointments_bay_type refuses our insert
+                pool.submit(() -> jdbc.sql("DELETE FROM service_bay_vehicle_types"
+                                + " WHERE service_bay_id = ? AND vehicle_type_id = ?")
+                        .params(a.serviceBayId(), a.vehicleTypeId()).update()).get();
+            }
+            tried.add(a);
+            return invocation.callRealMethod();
+        }).when(appointments).insert(any());
+        String key = key();
+
+        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, local("09:00")));
+
+        assertThat(response.statusCode()).isEqualTo(201);
+        assertThat(tried).hasSize(2);
+        assertThat(tried.get(1).serviceBayId()).isNotEqualTo(tried.get(0).serviceBayId());
+        JsonNode body = json.readTree(response.body());
+        assertThat(body.get("serviceBayId").asString()).isEqualTo(tried.get(1).serviceBayId().toString());
+        assertThat(appointmentsWithKey(key)).isEqualTo(1);
+        assertThat(outboxRowsOfDealer()).isEqualTo(1);
+    }
+
+    @Test
     void ac16AllPairsFailIs409AndLeavesNoRows() throws Exception {
         fixtures.bay(dealer, vehicleType);
         fixtures.bay(dealer, vehicleType);

@@ -140,7 +140,7 @@ public class JdbcAppointmentRepository implements AppointmentRepository {
     }
 
     /** SQLSTATE + constraint name → domain signal; anything else stays a {@link DataAccessException}. */
-    private static RuntimeException translate(DataAccessException e) {
+    static RuntimeException translate(DataAccessException e) {
         ServerErrorMessage error = serverError(e);
         if (error == null) {
             return e;

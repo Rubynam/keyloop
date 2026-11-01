@@ -141,10 +141,14 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         // The Jackson error with the JSON path may wrap a java.time parse error
         for (Throwable cause = ex.getCause(); cause != null; cause = cause.getCause()) {
             if (cause instanceof JacksonException jackson && !jackson.getPath().isEmpty()) {
-                field = jackson.getPath().stream()
+                String path = jackson.getPath().stream()
                         .map(JacksonException.Reference::getPropertyName)
                         .filter(Objects::nonNull)
                         .collect(Collectors.joining("."));
+                // Index-only path (the body is a JSON array): no field to name
+                if (!path.isEmpty()) {
+                    field = path;
+                }
                 break;
             }
         }
