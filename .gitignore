@@ -43,3 +43,7 @@ _bmad/
 # Local tooling: IntelliJ run configs and Claude Code skills stay on each machine
 .run/
 .claude/skills/
+
+# OS / tool junk
+.DS_Store
+__pycache__/
