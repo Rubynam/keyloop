@@ -2,7 +2,7 @@
 title: 'Spec07 — Book an appointment (POST /api/v1/appointments)'
 type: 'feature'
 created: '2026-11-01'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '251a8b05346efce5238442510891c865838754d3'
