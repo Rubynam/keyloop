@@ -33,8 +33,9 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li>One row at a time, in two transactions. TX A takes the next due row with
  *       {@code FOR UPDATE SKIP LOCKED} and counts the try, then commits, so a try counts
  *       even when the JVM dies during the work. TX B locks the row again by id and
- *       claimed try, and does the work under that lock. No ShedLock: several instances
- *       get different rows.</li>
+ *       claimed try (waiting, not skipping, if another claim scan still holds it), and
+ *       does the work under that lock. No ShedLock: several instances get different
+ *       rows.</li>
  *   <li>Per row: {@code INCR} + {@code EXPIRE versionKeyTtl} for the union of
  *       {@code dates}, {@code oldDates}, {@code newDates}; empty union = processed.</li>
  *   <li>Redis or other runtime error: one try plus {@code maxRetries} retries,
