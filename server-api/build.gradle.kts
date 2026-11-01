@@ -20,4 +20,6 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testImplementation("org.testcontainers:testcontainers-postgresql")
     testImplementation("com.redis:testcontainers-redis")
+    // Layering rules of CLAUDE.md §1 as tests (Spec05 §7, ARC-01…08)
+    testImplementation(libs.archunit.junit5)
 }
