@@ -12,7 +12,8 @@ dependencies {
     // The API owns the DB schema: migrations run on startup
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.flywaydb:flyway-database-postgresql")
-    runtimeOnly("org.postgresql:postgresql")
+    // implementation, not runtimeOnly: the appointment repository reads PSQLException constraint names (Spec07 §7.2)
+    implementation("org.postgresql:postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     // Integration tests against real Postgres 18 + Redis 8 (Spec04 TST-01)
