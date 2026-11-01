@@ -29,6 +29,7 @@ import com.keyloop.scheduler.api.exception.appointment.OffSlotGridException;
 import com.keyloop.scheduler.api.exception.appointment.OutsideBusinessHoursException;
 import com.keyloop.scheduler.api.exception.appointment.ResourceGoneException;
 import com.keyloop.scheduler.api.exception.appointment.SlotTakenException;
+import com.keyloop.scheduler.api.exception.appointment.SlotTakenException.Resource;
 import com.keyloop.scheduler.api.exception.appointment.VehicleBusyException;
 import com.keyloop.scheduler.api.exception.appointment.VehicleOwnerMismatchException;
 import com.keyloop.scheduler.api.model.appointment.AppointmentBookedPayload;
@@ -63,7 +64,8 @@ import org.springframework.transaction.support.TransactionOperations;
  *    │no
  * 404s ─► owner 400 ─► grid 422 ─► hours 422 ─► vehicle busy 422 ─► candidates 422 / 409
  *    │
- * for pair in pairs:  BEGIN insert appointment + outbox COMMIT ─► 201
+ * for pair in pairs:  BEGIN lock tech → bay → vehicle, check again,
+ *                           insert appointment + outbox COMMIT ─► 201
  *                     bay / tech taken, deadlock, resource gone ─► next pair
  *                     vehicle taken ─► 422      same key committed ─► replay
  * all failed ─► 409   (vehicle booked meanwhile ─► 422; same key won ─► replay)
@@ -185,8 +187,19 @@ public class AppointmentServiceImpl implements AppointmentService {
         throw new BookingConflictException();
     }
 
-    /** One transaction: both rows commit, or neither does (Spec04 §4, BK-08). */
+    /**
+     * One transaction: both rows commit, or neither does (Spec04 §4, BK-08). Racers for the
+     * same technician, bay or vehicle queue on the locks first, then look again: the
+     * candidate read was not locked, and checking here is cheaper than a constraint
+     * violation or a deadlock.
+     */
     private StoredAppointment insertWithEvent(NewAppointment appointment, List<LocalDate> dates) {
+        appointments.lockResources(appointment.technicianId(), appointment.serviceBayId(), appointment.vehicleId());
+        Optional<Resource> busy = appointments.findBusyResource(appointment.technicianId(),
+                appointment.serviceBayId(), appointment.vehicleId(), appointment.start(), appointment.end());
+        if (busy.isPresent()) {
+            throw new SlotTakenException(busy.get());
+        }
         StoredAppointment saved = appointments.insert(appointment);
         outbox.append(OutboxEventTypes.APPOINTMENT, saved.id().toString(), OutboxEventTypes.APPOINTMENT_BOOKED,
                 new AppointmentBookedPayload(saved.id(), saved.dealershipId(), dates));

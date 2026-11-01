@@ -5,8 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -26,9 +27,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * spec-availability-ops CAP-7: every row of the candidate-selection.md examples table on
- * real PostgreSQL, plus the two ordering rules. Ids are chosen by the test (same prefix,
- * rising last digit) so "B1 < B2 < B3" is also PostgreSQL's {@code id} order. Each test
- * rolls back.
+ * real PostgreSQL, plus the two ordering rules. Bays and technicians that rank equal come
+ * in random order, so the table rows check the shape of the pairs (how many, diagonal
+ * first), not which ids. Each test rolls back.
  */
 @Transactional
 class CandidateSelectorIT extends IntegrationTest {
@@ -58,14 +59,14 @@ class CandidateSelectorIT extends IntegrationTest {
         otherType = fixtures.vehicleType();
     }
 
-    @ParameterizedTest(name = "{0} bays, {1} techs → {2}")
+    @ParameterizedTest(name = "{0} bays, {1} techs → {2} pairs")
     @CsvSource({
-            "3, 4, 'B1T1 B2T2 B3T3'",
-            "1, 3, 'B1T1 B1T2 B1T3'",
-            "2, 1, 'B1T1 B2T1'",
-            "2, 2, 'B1T1 B2T2 B1T2'",
+            "3, 4, 3",      // B1T1 B2T2 B3T3
+            "1, 3, 3",      // B1T1 B1T2 B1T3
+            "2, 1, 2",      // B1T1 B2T1
+            "2, 2, 3",      // B1T1 B2T2 B1T2
     })
-    void examplesTablePairs(int bayCount, int techCount, String expected) {
+    void examplesTablePairs(int bayCount, int techCount, int expected) {
         List<UUID> bays = new ArrayList<>();
         for (int i = 1; i <= bayCount; i++) {
             bays.add(fixtures.bay(id(1, i), dealer, true, vehicleType));
@@ -78,9 +79,30 @@ class CandidateSelectorIT extends IntegrationTest {
         CandidateResult result = select();
 
         assertThat(result.outcome()).isEqualTo(Outcome.PAIRS);
-        assertThat(result.pairs()).containsExactlyElementsOf(Arrays.stream(expected.split(" "))
-                .map(p -> new Pair(bays.get(p.charAt(1) - '1'), techs.get(p.charAt(3) - '1')))
-                .toList());
+        List<Pair> pairs = result.pairs();
+        assertThat(pairs).hasSize(expected).doesNotHaveDuplicates()
+                .allSatisfy(p -> assertThat(bays).contains(p.serviceBayId()))
+                .allSatisfy(p -> assertThat(techs).contains(p.technicianId()));
+        // Diagonal first: one busy bay or technician fails one of these tries, not all
+        List<Pair> diagonal = pairs.subList(0, Math.min(bayCount, techCount));
+        assertThat(diagonal.stream().map(Pair::serviceBayId).distinct()).hasSize(diagonal.size());
+        assertThat(diagonal.stream().map(Pair::technicianId).distinct()).hasSize(diagonal.size());
+    }
+
+    @Test
+    void equalRanksComeInRandomOrder() {
+        for (int i = 1; i <= 4; i++) {
+            fixtures.bay(id(1, i), dealer, true, vehicleType);
+            fixtures.technicianWithId(id(2, i), dealer, service, vehicleType);
+        }
+
+        // 16 possible first pairs: 30 equal answers in a row would mean a fixed order
+        Set<Pair> firstPairs = new HashSet<>();
+        for (int i = 0; i < 30; i++) {
+            firstPairs.add(select().pairs().get(0));
+        }
+
+        assertThat(firstPairs).hasSizeGreaterThan(1);
     }
 
     @Test
@@ -155,7 +177,7 @@ class CandidateSelectorIT extends IntegrationTest {
                 status);
     }
 
-    /** Same prefix for every id of a test, so the order is decided by {@code kind} then {@code n}. */
+    /** Same prefix for every id of a test; {@code kind} 1 = bay, 2 = technician. */
     private UUID id(int kind, int n) {
         return UUID.fromString(prefix + "-0000-7000-800" + kind + "-" + String.format("%012d", n));
     }

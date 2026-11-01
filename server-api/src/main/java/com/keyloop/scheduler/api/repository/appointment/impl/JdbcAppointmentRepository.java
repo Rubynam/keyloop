@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -52,6 +53,12 @@ public class JdbcAppointmentRepository implements AppointmentRepository {
     private static final String FK_TECHNICIAN_PREFIX = "fk_appointments_tech_";
     private static final String FK_VEHICLE_OWNER = "fk_appointments_vehicle_owner";
     private static final String UQ_IDEMPOTENCY_KEY = "appointments_idempotency_key_key";
+
+    // Advisory lock keys: one namespace per resource kind, so a technician id never
+    // shares a lock with the same id read as a bay
+    private static final String LOCK_TECHNICIAN = "technician:";
+    private static final String LOCK_BAY = "bay:";
+    private static final String LOCK_VEHICLE = "vehicle:";
 
     private static final String SELECT_STORED = """
             SELECT id, customer_id, vehicle_id, dealership_id, service_type_id,
@@ -104,6 +111,45 @@ public class JdbcAppointmentRepository implements AppointmentRepository {
                 .param("start", utc(start))
                 .param("end", utc(end))
                 .query(Boolean.class)
+                .single();
+    }
+
+    @Override
+    public void lockResources(UUID technicianId, UUID serviceBayId, UUID vehicleId) {
+        // One statement per lock: the order of the calls is the lock order
+        for (String key : List.of(LOCK_TECHNICIAN + technicianId, LOCK_BAY + serviceBayId, LOCK_VEHICLE + vehicleId)) {
+            jdbc.sql("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))")
+                    .param("key", key)
+                    .query()
+                    .listOfRows();
+        }
+    }
+
+    @Override
+    public Optional<Resource> findBusyResource(UUID technicianId, UUID serviceBayId, UUID vehicleId,
+                                               Instant start, Instant end) {
+        // tstzrange && matches the exclusion constraints, so their GiST indexes serve it;
+        // the status is literal text so the partial index predicate can be proven
+        return jdbc.sql("""
+                        SELECT coalesce(bool_or(vehicle_id = :vehicleId), false)        AS vehicle,
+                               coalesce(bool_or(technician_id = :technicianId), false)  AS technician,
+                               coalesce(bool_or(service_bay_id = :serviceBayId), false) AS bay
+                        FROM appointments
+                        WHERE status <> '%s'
+                          AND tstzrange(start_time, end_time, '[)') && tstzrange(:start, :end, '[)')
+                          AND (vehicle_id = :vehicleId OR technician_id = :technicianId
+                               OR service_bay_id = :serviceBayId)
+                        """.formatted(AppointmentStatus.CANCELLED.name()))
+                .param("vehicleId", vehicleId)
+                .param("technicianId", technicianId)
+                .param("serviceBayId", serviceBayId)
+                .param("start", utc(start))
+                .param("end", utc(end))
+                // One row always (aggregate): it names the first busy resource, if any
+                .query((rs, n) -> rs.getBoolean("vehicle") ? Optional.of(Resource.VEHICLE)
+                        : rs.getBoolean("technician") ? Optional.of(Resource.TECHNICIAN)
+                        : rs.getBoolean("bay") ? Optional.of(Resource.BAY)
+                        : Optional.<Resource>empty())
                 .single();
     }
 

@@ -9,10 +9,12 @@ import com.keyloop.scheduler.api.model.appointment.CandidateResult;
 /**
  * Picks the (bay, technician) pairs a booking should try for one time window. The
  * booking runs one try per pair, so a good order means fewer conflicts. It reads
- * PostgreSQL only, never the cache, and the same database state gives the same pairs.
+ * PostgreSQL only, never the cache. Bays and technicians that rank equal come in random
+ * order, so parallel bookings of one slot do not all try the same pairs.
  * candidate-selection.md, DLD §5, Spec04 §6.
  *
  * <pre>
+ * (Bn / Tn = n-th after ordering; equal-rank resources are shuffled first)
  * Free bays (ordered) | Free techs (ordered) | Pairs
  * B1, B2, B3          | T1, T2, T3, T4       | (B1,T1) (B2,T2) (B3,T3)
  * B1                  | T1, T2, T3           | (B1,T1) (B1,T2) (B1,T3)
