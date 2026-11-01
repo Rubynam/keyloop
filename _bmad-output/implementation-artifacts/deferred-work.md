@@ -70,9 +70,27 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-outbox-relay-properties-validation.md`
   summary: A missing `scheduler.outbox.relay.max-retries` binds to 0 (primitive `int`) and passes `@PositiveOrZero`, so retries turn off silently — use `Integer` + `@NotNull` or an explicit default.
   evidence: Review pass 1 (B1); record constructor binding defaults missing primitives to 0, same before Task 3. Shipped application.yml sets the value.
+  resolution: Fixed by `spec-outbox-properties-hardening` — `batchSize` / `maxRetries` are `Integer` + `@NotNull`, so a missing key stops startup.
 - source_spec: `_bmad-output/implementation-artifacts/spec-outbox-relay-properties-validation.md`
   summary: Validate `OutboxCleanupProperties` (`@NotBlank` cron, `@DurationMin` on the three retentions) — a 0 `failed-retention` would delete FAILED rows at once.
   evidence: Review pass 1 (B2); pre-existing, excluded from Task 3 by its intent (Never section).
+  resolution: Fixed by `spec-outbox-properties-hardening` — `OutboxCleanupProperties` is `@Validated` (`@NotBlank` cron, `@NotNull @DurationMin(millis = 1)` retentions), checked even when disabled.
 - source_spec: `_bmad-output/implementation-artifacts/spec-outbox-relay-properties-validation.md`
   summary: Add upper bounds to relay settings (`@Max` on max-retries/batch-size, `@DurationMax` on durations) — `max-retries=Integer.MAX_VALUE` overflows `maxRetries() + 1` in `OutboxRelayServiceImpl` and fails every row; huge durations overflow `toMillis()`.
   evidence: Review pass 1 (B3/E1/E2); needs absurd values, overflow pre-dates Task 3. Pick limits with ops (e.g. version-key-ttl vs cache TTL).
+  resolution: Fixed by `spec-outbox-properties-hardening` — `@Max` / `@DurationMax` limits in `RelayConstants` (batch-size ≤ 1000, max-retries ≤ 100, poll/retry delay ≤ 1h, version-key-ttl ≤ 30d).
+- source_spec: `_bmad-output/implementation-artifacts/spec-outbox-properties-hardening.md`
+  summary: `scheduler.outbox.cleanup.cron` is only `@NotBlank` — a malformed cron (`abc`, 5 fields) starts the app; add a `CronExpression.isValidExpression` constraint when the cleanup job is implemented.
+  evidence: Review pass 1 (#2); excluded by the spec's frozen Never; pre-existing, nothing schedules the cron yet.
+- source_spec: `_bmad-output/implementation-artifacts/spec-outbox-properties-hardening.md`
+  summary: Cleanup retentions have no upper bound — add `@DurationMax` once the cleanup job converts them (`now().minus(...)` / `toMillis()`).
+  evidence: Review pass 1 (#3), unverified (would be medium): `OutboxCleanupJobConfig` is a placeholder, so no overflow path exists yet; settle when the job's delete steps are written.
+- source_spec: `_bmad-output/implementation-artifacts/spec-outbox-properties-hardening.md`
+  summary: `scheduler.outbox.relay.version-key-ttl` accepts values below the server-api availability cache TTL (`30s`), so a version key can expire before cached slot lists and stale availability is served — raise the floor or document the coupling with ops.
+  evidence: Review pass 1 (#4); excluded by the spec's frozen Never (no cross-module check); pre-existing.
+- source_spec: `_bmad-output/implementation-artifacts/spec-outbox-properties-hardening.md`
+  summary: `enabled` in `OutboxRelayProperties` / `OutboxCleanupProperties` is primitive `boolean`, so a missing key binds to `false` with no error (same class as B1) — consider `@NotNull Boolean` or document that missing means off.
+  evidence: Review pass 1 (#5); pre-existing; `@ConditionalOnProperty` on `scheduler.outbox.relay.enabled` already treats a missing key as off.
+- source_spec: `_bmad-output/implementation-artifacts/spec-outbox-properties-hardening.md`
+  summary: `OutboxRelayIT.twoInstancesNeverProcessTheSameRow` is flaky — line 207 sees version 0 for one date while the handled total is 40, so a row can be counted as handled without its version bump under two concurrent instances (claim/relock path).
+  evidence: Found during verification on 2026-11-01: fails 3/8 runs on baseline `efbb5b1` and 1/5 on this branch with the same assertion; this spec does not touch the relay loop.
