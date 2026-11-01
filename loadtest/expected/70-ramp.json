@@ -1,0 +1,66 @@
+{
+  "suite": "70-ramp",
+  "inputFile": "input/70-ramp.json",
+  "_doc": "Expected output per case id of the input file. A response that differs is a Locust failure (Spec06 §5). Shape is the real AvailabilityResponse: days[].slots[].",
+  "cases": [
+    {
+      "id": "RP-01",
+      "goal": "HOT read: the most popular question (Q7 hub, oil change, gasoline car, next 7 days). The simulator books these days, so the relay bumps their versions while customers read them.",
+      "expect": {
+        "status": 200,
+        "headers": {"Content-Type": {"matches": "^application/json"}},
+        "body": [
+          {"path": "timezone", "equals": "Asia/Ho_Chi_Minh"},
+          {"path": "days", "type": "array", "minItems": 7, "maxItems": 7},
+          {
+            "path": "days",
+            "each": [
+              {"path": "date", "matches": "^\\d{4}-\\d{2}-\\d{2}$"},
+              {"path": "slots", "type": "array"},
+              {"path": "slots", "each": [{"path": "start", "matches": "T\\d{2}:(00|15|30|45):00(Z|[+-]\\d{2}:\\d{2})$"}]}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "RP-02",
+      "goal": "Second hot key on the same days (tyre rotation): one version bump drops both keys at once.",
+      "expect": {
+        "status": 200,
+        "body": [{"path": "days", "type": "array", "minItems": 3, "maxItems": 3}]
+      }
+    },
+    {
+      "id": "RP-03",
+      "goal": "COLD read: one random day 1–60 ahead (brake service, diesel car) → mostly misses computed from PostgreSQL.",
+      "expect": {
+        "status": 200,
+        "body": [{"path": "days", "type": "array", "minItems": 1, "maxItems": 1}, {"path": "days.0.slots", "type": "array"}]
+      }
+    },
+    {
+      "id": "RP-04",
+      "goal": "Range guard: 15 days is a 400 ProblemDetail, decided before any DB or cache work.",
+      "expect": {
+        "status": 400,
+        "headers": {"Content-Type": {"matches": "^application/problem\\+json"}},
+        "body": [{"path": "status", "equals": 400}, {"path": "detail", "equals": "Range is 15 days; at most 14 are allowed"}]
+      }
+    },
+    {
+      "id": "RP-05",
+      "goal": "Unknown dealership id → 404 ProblemDetail, never a 5xx.",
+      "expect": {
+        "status": 404,
+        "headers": {"Content-Type": {"matches": "^application/problem\\+json"}},
+        "body": [{"path": "status", "equals": 404}]
+      }
+    },
+    {
+      "id": "RP-06",
+      "goal": "Ping through nginx: the edge and the replicas stay healthy at the top of the ramp.",
+      "expect": {"status": 200, "body": [{"path": "status", "equals": "ok"}]}
+    }
+  ]
+}

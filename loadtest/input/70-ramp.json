@@ -1,0 +1,123 @@
+{
+  "suite": "70-ramp",
+  "goal": "Ramp 0 → 100 requests/s against what the API serves today (availability + ping), while loadtest/simulator writes bookings and cancellations into PostgreSQL + the outbox. Hot keys are invalidated by the relay during the run, so the cache miss path, the rebuild lock and fail-open all run under load.",
+  "precondition": "loadtest/run-ramp.sh (fresh build, seeding/seed.sh, simulator running).",
+  "expectedFile": "expected/70-ramp.json",
+  "_doc": "Input requests. Locust loads this file, binds {{tokens}}, sends each request, then checks it against expectedFile. Weights are percent of traffic.",
+  "cases": [
+    {
+      "id": "RP-01",
+      "goal": "HOT read: the most popular question (Q7 hub, oil change, gasoline car, next 7 days). The simulator books these days, so the relay bumps their versions while customers read them.",
+      "verifies": ["D1 cache-aside", "Spec04 relay invalidation"],
+      "weight": 50,
+      "bind": {
+        "from": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 1}},
+        "to": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 7}}
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [hot]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{from}}",
+          "to": "{{to}}"
+        }
+      }
+    },
+    {
+      "id": "RP-02",
+      "goal": "Second hot key on the same days (tyre rotation): one version bump drops both keys at once.",
+      "verifies": ["D1 versioned keys"],
+      "weight": 15,
+      "bind": {
+        "from": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 1}},
+        "to": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 3}}
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [hot]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.TYRE_ROTATION}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{from}}",
+          "to": "{{to}}"
+        }
+      }
+    },
+    {
+      "id": "RP-03",
+      "goal": "COLD read: one random day 1–60 ahead (brake service, diesel car) → mostly misses computed from PostgreSQL.",
+      "verifies": ["D1 cache miss"],
+      "weight": 15,
+      "bind": {"day": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": [1, 60]}}},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [cold]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.BRAKE_SERVICE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.DIESEL_CAR}}",
+          "from": "{{day}}",
+          "to": "{{day}}"
+        }
+      }
+    },
+    {
+      "id": "RP-04",
+      "goal": "Range guard: 15 days is a 400 ProblemDetail, decided before any DB or cache work.",
+      "verifies": ["spec-read-availability range rule"],
+      "weight": 5,
+      "bind": {
+        "from": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 1}},
+        "to": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 15}}
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [invalid]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{from}}",
+          "to": "{{to}}"
+        }
+      }
+    },
+    {
+      "id": "RP-05",
+      "goal": "Unknown dealership id → 404 ProblemDetail, never a 5xx.",
+      "verifies": ["CLAUDE.md §2 error statuses"],
+      "weight": 5,
+      "bind": {
+        "dealer": "uuid",
+        "day": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 2}}
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [unknown]",
+        "query": {
+          "dealershipId": "{{dealer}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{day}}",
+          "to": "{{day}}"
+        }
+      }
+    },
+    {
+      "id": "RP-06",
+      "goal": "Ping through nginx: the edge and the replicas stay healthy at the top of the ramp.",
+      "verifies": ["Spec01 API-07"],
+      "weight": 10,
+      "request": {"method": "GET", "path": "/api/v1/ping", "name": "/api/v1/ping"}
+    }
+  ]
+}

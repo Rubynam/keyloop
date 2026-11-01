@@ -8,10 +8,12 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.slf4j.event.Level;
 
 /**
  * Logs one line per call of a controller, service or scheduled method:
  * {@code [ServiceName][method][correlationId][input][output]}.
+ * A thrown exception is logged at ERROR, or at WARN when it is a {@link ClientError} (4xx).
  */
 @Slf4j
 @Aspect
@@ -39,7 +41,9 @@ public class MethodLoggingAspect {
             log.info("[{}][{}][{}][{}][{}]", service, method, CorrelationId.current(), input, output);
             return result;
         } catch (Throwable e) {
-            log.error("[{}][{}][{}][{}][{}: {}]", service, method, CorrelationId.current(), input,
+            // A 4xx is the caller's mistake: WARN keeps ERROR for failures that need a fix
+            Level level = e instanceof ClientError ? Level.WARN : Level.ERROR;
+            log.atLevel(level).log("[{}][{}][{}][{}][{}: {}]", service, method, CorrelationId.current(), input,
                     e.getClass().getSimpleName(), e.getMessage());
             throw e;
         } finally {

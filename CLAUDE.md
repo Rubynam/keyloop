@@ -26,30 +26,69 @@ Package layout: **layer first, then feature**.
 - Implementations sit in `<layer>/<feature>/impl/`.
 
 ```
-api/
+server-api  (com.keyloop.scheduler.api)
 ├── controller/
-│   └── availability/  AvailabilityController
+│   ├── availability/  AvailabilityController
+│   └── ping/          PingController
 ├── service/
-│   └── availability/  AvailabilityService (interface)
-│       └── impl/      AvailabilityServiceImpl
+│   ├── availability/  AvailabilityService (interface)
+│   │   └── impl/      AvailabilityServiceImpl, SlotCalculator (pure helper)
+│   └── booking/       CandidateSelector (interface)
+│       └── impl/      CandidateSelectorImpl
 ├── repository/
-│   └── availability/  AvailabilityRepository (interface)
-│       └── impl/      JdbcAvailabilityRepository
-├── cache/             (Redis ports, same shape as repository/)
+│   ├── availability/  AvailabilityRepository (interface)
+│   │   └── impl/      JdbcAvailabilityRepository
+│   └── booking/       CandidateRepository (interface)
+│       └── impl/      JdbcCandidateRepository
+├── cache/             Redis ports, same shape as repository/
+│   └── availability/  AvailabilityCache (interface)
+│       └── impl/      RedisAvailabilityCache
 ├── model/             shared types (AppointmentStatus)
-│   └── availability/  Dealership, Booking (rows used by service + repository)
+│   ├── availability/  Dealership, Booking, Interval (rows used by service + repository)
+│   └── booking/       CandidateResult
 ├── dto/
-│   └── availability/  AvailabilityResponse (HTTP only)
+│   ├── availability/  AvailabilityResponse (HTTP only)
+│   └── ping/          PingResponse
 ├── exception/         NotFoundException (shared)
 │   └── availability/  InvalidRangeException
 ├── constant/          ApiPaths, HeaderNames, ErrorMessages (shared)
-│   └── availability/  AvailabilityConstants
+│   ├── availability/  AvailabilityConstants
+│   └── booking/       BookingConstants
 ├── config/            ClockConfig
-│   └── availability/  AvailabilityConfig, *Properties
-└── web/               ApiExceptionHandler, RequestIdFilter
+│   └── availability/  AvailabilityConfig, AvailabilityCacheProperties
+└── web/               ApiExceptionHandler, RequestIdFilter (cross-cutting HTTP infra)
+
+scheduler-batch  (com.keyloop.scheduler.batch)
+├── schedule/          JobScheduler, OutboxRelay (@Scheduled entry points = "controllers")
+├── job/               Spring Batch wiring + tasklets (also "controllers")
+│   ├── heartbeat/     HeartbeatJobConfig, HeartbeatTasklet
+│   └── outbox/        OutboxCleanupJobConfig
+├── service/
+│   ├── heartbeat/     HeartbeatService (interface)
+│   │   └── impl/      HeartbeatServiceImpl
+│   └── outbox/        OutboxRelayService (interface)
+│       └── impl/      OutboxRelayServiceImpl
+├── repository/
+│   ├── heartbeat/     HeartbeatProbe (interface)
+│   │   └── impl/      JdbcRedisHeartbeatProbe
+│   └── outbox/        OutboxEventRepository (interface)
+│       └── impl/      JdbcOutboxEventRepository
+├── store/             Redis-backed ports, same shape as repository/
+│   └── outbox/        AvailabilityVersionStore (interface)
+│       └── impl/      RedisAvailabilityVersionStore
+├── model/
+│   └── outbox/        OutboxEvent
+├── exception/
+│   └── outbox/        InvalidPayloadException
+├── constant/          JobNames, SchedulingConstants
+│   └── outbox/        RelayConstants
+└── config/            SchedulingConfig
+    └── outbox/        OutboxRelayProperties, OutboxCleanupProperties
 ```
 
 In `scheduler-batch`, `@Scheduled` classes (`schedule/`) and tasklets (`job/<feature>/`) play the controller role: they call a service interface only. Redis-backed ports there live in `store/`.
+
+`ArchitectureTest` in each app (ArchUnit, Spec05 §7 ARC-01…08) fails the build when these rules break.
 
 Full target layout and migration plan: [planing/Spec05.md](planing/Spec05.md).
 

@@ -1,8 +1,8 @@
 package com.keyloop.scheduler.api.web;
 
-import com.keyloop.scheduler.api.availability.InvalidRangeException;
 import com.keyloop.scheduler.api.constant.ErrorMessages;
 import com.keyloop.scheduler.api.exception.NotFoundException;
+import com.keyloop.scheduler.api.exception.availability.InvalidRangeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;

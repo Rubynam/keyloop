@@ -19,6 +19,8 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testImplementation("org.testcontainers:testcontainers-postgresql")
     testImplementation("com.redis:testcontainers-redis")
+    // Layering rules of CLAUDE.md §1 as tests (Spec05 §7, ARC-01…08)
+    testImplementation(libs.archunit.junit5)
     // Tests only: apply server-api's migrations to the test database (the app itself never runs Flyway, BAT-03)
     testImplementation("org.springframework.boot:spring-boot-starter-flyway")
     testImplementation("org.flywaydb:flyway-database-postgresql")

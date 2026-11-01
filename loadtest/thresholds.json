@@ -45,6 +45,17 @@
     "race": {
       "global": { "maxFailRatio": 0, "max5xx": 0 },
       "endpoints": {}
+    },
+    "ramp": {
+      "_note": "Ramp 0 -> 100 RPS (RampShape) on the endpoints the API serves today, while loadtest/simulator writes bookings.",
+      "global": { "maxFailRatio": 0.01, "max5xx": 0 },
+      "endpoints": {
+        "/api/v1/availability [hot]":     { "p50": 30,  "p95": 150, "p99": 400,  "minRequests": 5000, "maxFailRatio": 0.001 },
+        "/api/v1/availability [cold]":    { "p95": 600, "p99": 1500, "maxFailRatio": 0.01 },
+        "/api/v1/availability [invalid]": { "p95": 100, "maxFailRatio": 0 },
+        "/api/v1/availability [unknown]": { "p95": 150, "maxFailRatio": 0 },
+        "/api/v1/ping":                   { "p95": 100, "maxFailRatio": 0 }
+      }
     }
   }
 }
