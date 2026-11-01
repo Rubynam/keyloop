@@ -36,3 +36,7 @@ build/
 
 # IDE (IntelliJ): per-developer settings and data sources
 .idea/
+
+# Local tooling: IntelliJ run configs and Claude Code skills stay on each machine
+.run/
+.claude/skills/
