@@ -22,3 +22,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-05-pr1-shared-layer-root.md`
   summary: Add .DS_Store and loadtest/__pycache__/ to .gitignore.
   evidence: Both show as untracked junk; .gitignore is also edited by PR #6, so do it after that merges.
+- source_spec: `_bmad-output/implementation-artifacts/spec-05-pr2-pr5-layered-refactor.md`
+  summary: Give the availability cache port its own model slot type so `cache/` stops depending on the HTTP DTO `AvailabilityResponse.Slot`.
+  evidence: CLAUDE.md §1 says DTOs are HTTP only; the dependency pre-dates Spec05 and needs a model type plus mapping in the service.
+- source_spec: `_bmad-output/implementation-artifacts/spec-05-pr2-pr5-layered-refactor.md`
+  summary: Add a contract test (or shared constant) proving server-api and scheduler-batch build the same `avail:ver:{dealer}:{date}` key.
+  evidence: The prefix is defined in AvailabilityConstants and RelayConstants separately; drift would leave the cache silently stale. Pre-existing as literals.
+- source_spec: `_bmad-output/implementation-artifacts/spec-05-pr2-pr5-layered-refactor.md`
+  summary: Validate `scheduler.outbox.relay.batch-size` as positive so `OutboxRelay.relay()` cannot busy-loop on 0.
+  evidence: `while (tick() == batchSize)` never ends when batch-size is 0; no @Validated/@Positive on OutboxRelayProperties. Pre-existing loop.
+- source_spec: `_bmad-output/implementation-artifacts/spec-05-pr2-pr5-layered-refactor.md`
+  summary: Add `constant/ping/PingConstants` and `resources/redis/release-lock.lua` to the CLAUDE.md §1 layout tree.
+  evidence: Both were added by Spec05 PR2/PR5 but the tree written in PR5 omits them.
