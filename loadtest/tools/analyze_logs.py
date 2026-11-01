@@ -84,7 +84,7 @@ def analyze_logs(entries):
     by_file = defaultdict(Counter)
     per_second = defaultdict(Counter)
     warn_err = defaultdict(Counter)
-    client_errors_at_error = Counter()
+    client_errors = defaultdict(Counter)
     exceptions = Counter()
     detectors = Counter()
     examples = {}
@@ -99,9 +99,10 @@ def analyze_logs(entries):
             m = re.match(r"^\s*(?:Caused by: )?([\w.$]+(?:Exception|Error))\b", line)
             if m:
                 exceptions[m.group(1).rsplit(".", 1)[-1]] += 1
-        a = ASPECT_ERROR.match(msg) if level == "ERROR" else None
+        a = ASPECT_ERROR.match(msg) if level in ("WARN", "ERROR") else None
         if a and a.group(3) in CLIENT_ERRORS:
-            client_errors_at_error[f"{a.group(1)}.{a.group(2)} → {a.group(3)}"] += 1
+            # Expected 4xx: counted apart from real WARN/ERROR; only a problem when logged at ERROR
+            client_errors[level][f"{a.group(1)}.{a.group(2)} → {a.group(3)}"] += 1
         elif level in ("WARN", "ERROR", "FATAL"):
             warn_err[f"{level} {logger}"][norm(msg)] += 1
         for did, _, rx in DETECTORS:
@@ -112,7 +113,8 @@ def analyze_logs(entries):
     return {"byFile": {f: dict(c) for f, c in by_file.items()}, "peakLinesPerSecond": peak,
             "aspectLines": aspect_lines, "totalLines": len(entries),
             "warnErrorTop": {k: c.most_common(8) for k, c in warn_err.items()},
-            "clientErrorsLoggedAsError": dict(client_errors_at_error), "exceptions": dict(exceptions.most_common(15)),
+            "clientErrorsLoggedAsError": dict(client_errors["ERROR"]),
+            "clientErrorsAtWarn": dict(client_errors["WARN"]), "exceptions": dict(exceptions.most_common(15)),
             "detectors": dict(detectors), "examples": examples}
 
 
@@ -267,8 +269,11 @@ def markdown(result):
             L.append(f"- `{k}` ×{n}: `{msg}`")
     if not lg["warnErrorTop"]:
         L.append("- none")
-    L += ["", "### Expected 4xx logged at ERROR", ""]
-    L += [f"- {k}: {v}" for k, v in lg["clientErrorsLoggedAsError"].items()] or ["- none"]
+    L += ["", "### Expected 4xx (client errors) by log level", ""]
+    L += [f"- ERROR {k}: {v}" for k, v in lg["clientErrorsLoggedAsError"].items()]
+    L += [f"- WARN {k}: {v}" for k, v in lg.get("clientErrorsAtWarn", {}).items()]
+    if not lg["clientErrorsLoggedAsError"] and not lg.get("clientErrorsAtWarn"):
+        L.append("- none")
     L += ["", "### Exceptions in stack traces", ""]
     L += [f"- {k}: {v}" for k, v in lg["exceptions"].items()] or ["- none"]
     L += ["", "## Containers (peak)", "", "| Container | CPU % | Memory MiB |", "|---|---|---|"]
