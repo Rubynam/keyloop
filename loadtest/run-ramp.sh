@@ -5,13 +5,22 @@
 #
 #   loadtest/run-ramp.sh                       # ramp 300 s, hold 180 s at 100 RPS
 #   RAMP_UP_SECONDS=120 RAMP_HOLD_SECONDS=60 loadtest/run-ramp.sh
+#   LOADTEST_PROFILE=book-ramp loadtest/run-ramp.sh   # same ramp on POST /appointments (Spec07)
 #
-# Output: loadtest/reports/ramp-<timestamp>/ (git-ignored). Exit code 1 when the analysis
+# Profile 'ramp' reads availability while the simulator writes bookings into PostgreSQL.
+# Profile 'book-ramp' books through the API itself, so the simulator is off (SIMULATOR=0).
+#
+# Output: loadtest/reports/<profile>-<timestamp>/ (git-ignored). Exit code 1 when the analysis
 # reports a high-severity finding or Locust misses a budget.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-export LOADTEST_PROFILE=ramp
+export LOADTEST_PROFILE=${LOADTEST_PROFILE:-ramp}
+case "$LOADTEST_PROFILE" in
+  ramp) SIMULATOR=${SIMULATOR:-1} ;;
+  book-ramp) SIMULATOR=${SIMULATOR:-0} ;;
+  *) echo "run-ramp.sh: profile '$LOADTEST_PROFILE' has no RampShape (use ramp or book-ramp)" >&2; exit 2 ;;
+esac
 export RAMP_MAX_RPS=${RAMP_MAX_RPS:-100}
 export RAMP_UP_SECONDS=${RAMP_UP_SECONDS:-300}
 export RAMP_HOLD_SECONDS=${RAMP_HOLD_SECONDS:-180}
@@ -20,16 +29,16 @@ export SIM_DURATION=$((RAMP_UP_SECONDS + RAMP_HOLD_SECONDS))
 export LOCUST_RUN_TIME="$((SIM_DURATION + 60))s"
 
 TS=$(date +%Y%m%d-%H%M%S)
-RUN=loadtest/reports/ramp-$TS
+RUN=loadtest/reports/$LOADTEST_PROFILE-$TS
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.loadtest.yml)
 psql() { docker compose exec -T postgres psql -U "${POSTGRES_USER:-scheduler}" -d "${POSTGRES_DB:-scheduler}" "$@"; }
 step() { printf '\n=== %s  %s\n' "$(date +%T)" "$*"; }
 
 mkdir -p "$RUN/logs"
 
-step "archive old app logs → logs/archive/before-ramp-$TS (this run gets clean files)"
-mkdir -p "logs/archive/before-ramp-$TS"
-find logs -maxdepth 1 -name '*.log' -exec mv {} "logs/archive/before-ramp-$TS/" \;
+step "archive old app logs → logs/archive/before-$LOADTEST_PROFILE-$TS (this run gets clean files)"
+mkdir -p "logs/archive/before-$LOADTEST_PROFILE-$TS"
+find logs -maxdepth 1 -name '*.log' -exec mv {} "logs/archive/before-$LOADTEST_PROFILE-$TS/" \;
 
 step "build images from the working tree and start the stack"
 "${COMPOSE[@]}" --profile loadtest build server-api scheduler-batch locust simulator
@@ -55,18 +64,24 @@ echo "ts,name,cpu,mem" > "$RUN/docker_stats.csv"
 SAMPLER=$!
 trap 'kill $SAMPLER 2>/dev/null || true; docker rm -f keyloop-ramp-simulator >/dev/null 2>&1 || true' EXIT
 
-step "booking simulator: ${SIM_RATE:-2} writes/s for ${SIM_DURATION}s"
-"${COMPOSE[@]}" run -d --name keyloop-ramp-simulator simulator > /dev/null
+if [ "$SIMULATOR" = 1 ]; then
+  step "booking simulator: ${SIM_RATE:-2} writes/s for ${SIM_DURATION}s"
+  "${COMPOSE[@]}" run -d --name keyloop-ramp-simulator simulator > /dev/null
+fi
 
-step "Locust ramp 0 → ${RAMP_MAX_RPS} RPS over ${RAMP_UP_SECONDS}s, hold ${RAMP_HOLD_SECONDS}s"
+step "Locust $LOADTEST_PROFILE 0 → ${RAMP_MAX_RPS} RPS over ${RAMP_UP_SECONDS}s, hold ${RAMP_HOLD_SECONDS}s"
 LOCUST_EXIT=0
 "${COMPOSE[@]}" run --rm locust > "$RUN/locust.txt" 2>&1 || LOCUST_EXIT=$?
 tail -40 "$RUN/locust.txt"
 
-step "wait for the simulator, then give the relay 15 s to drain"
-SIM_EXIT=$(docker wait keyloop-ramp-simulator)
-docker logs keyloop-ramp-simulator > "$RUN/simulator.log" 2>&1
-docker rm keyloop-ramp-simulator > /dev/null
+SIM_EXIT=0
+if [ "$SIMULATOR" = 1 ]; then
+  step "wait for the simulator"
+  SIM_EXIT=$(docker wait keyloop-ramp-simulator)
+  docker logs keyloop-ramp-simulator > "$RUN/simulator.log" 2>&1
+  docker rm keyloop-ramp-simulator > /dev/null
+fi
+step "give the relay 15 s to drain"
 sleep 15
 kill $SAMPLER 2>/dev/null || true
 
@@ -120,15 +135,27 @@ psql -c "SELECT numbackends, xact_commit, xact_rollback, deadlocks, conflicts, t
 psql -c "SELECT state, count(*) FROM pg_stat_activity WHERE datname = current_database() GROUP BY 1" >> "$RUN/pg_stats.txt"
 
 step "collect logs and Locust reports"
-cp logs/*.log "$RUN/logs/"
-for f in loadtest/reports/ramp.html loadtest/reports/ramp_*.csv loadtest/reports/ramp_simulator.json \
-         loadtest/reports/verdict-ramp.json; do
+# Log4j2 rolls a file at 20 MB into logs/archive/<name>-<date>-<i>.log.gz: at 100 RPS that
+# happens mid-run, so rebuild one file per container from its chunks rolled during the run
+# (oldest first) + the live file. Otherwise the analysis misses the start of the ramp.
+for cur in logs/*.log; do
+  base=$(basename "$cur" .log)
+  {
+    for gz in $(ls -tr logs/archive/"$base"-*.log.gz 2>/dev/null); do
+      if [ "$gz" -nt "$RUN/start.txt" ]; then gzip -dc "$gz"; fi
+    done
+    cat "$cur"
+  } > "$RUN/logs/$base.log"
+done
+# The simulator always writes ramp_simulator.json, whatever the profile
+for f in "loadtest/reports/$LOADTEST_PROFILE.html" "loadtest/reports/${LOADTEST_PROFILE}"_*.csv \
+         loadtest/reports/ramp_simulator.json "loadtest/reports/verdict-$LOADTEST_PROFILE.json"; do
   [ -e "$f" ] && mv "$f" "$RUN/"
 done
 
 step "analysis → $RUN/analysis.md"
 ANALYSIS_EXIT=0
-python3 loadtest/tools/analyze_logs.py "$RUN" > /dev/null || ANALYSIS_EXIT=$?
+python3 loadtest/tools/analyze_logs.py "$RUN" "$LOADTEST_PROFILE" > /dev/null || ANALYSIS_EXIT=$?
 echo "locust exit=$LOCUST_EXIT simulator exit=$SIM_EXIT analysis exit=$ANALYSIS_EXIT"
 echo "report: $RUN/analysis.md"
 [ "$LOCUST_EXIT" -eq 0 ] && [ "$ANALYSIS_EXIT" -eq 0 ]

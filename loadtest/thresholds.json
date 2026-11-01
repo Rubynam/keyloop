@@ -56,6 +56,19 @@
         "/api/v1/availability [unknown]": { "p95": 150, "maxFailRatio": 0 },
         "/api/v1/ping":                   { "p95": 100, "maxFailRatio": 0 }
       }
+    },
+    "book-ramp": {
+      "_note": "Ramp 0 -> 100 RPS (RampShape) on POST /api/v1/appointments (Spec07), ~70% writes, written by the API itself (no simulator). 409/422 are expected outputs, not failures.",
+      "global": { "maxFailRatio": 0.01, "max5xx": 0 },
+      "endpoints": {
+        "/api/v1/appointments":                { "p50": 50, "p95": 400, "p99": 1000, "minRequests": 2000, "maxFailRatio": 0.01 },
+        "/api/v1/appointments [contended]":    { "p95": 600, "p99": 1500, "maxFailRatio": 0.01 },
+        "/api/v1/appointments [replay]":       { "p95": 150, "maxFailRatio": 0.01 },
+        "/api/v1/appointments [conflict]":     { "p95": 400, "maxFailRatio": 0.01 },
+        "/api/v1/appointments [invalid]":      { "p95": 100, "maxFailRatio": 0 },
+        "/api/v1/appointments [unprocessable]":{ "p95": 300, "maxFailRatio": 0 },
+        "/api/v1/availability [hot]":          { "p50": 30, "p95": 150, "p99": 400, "maxFailRatio": 0.001 }
+      }
     }
   }
 }

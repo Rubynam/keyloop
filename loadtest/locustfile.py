@@ -3,7 +3,7 @@
 Every request comes from input/<suite>.json, and what must come back from
 expected/<suite>.json (joined by case id, lt/fixtures.py). The users below only decide *who* sends *which* suites, and how often.
 
-    LOADTEST_PROFILE=smoke|load|stress|spike|abuse|race   (default: smoke)
+    LOADTEST_PROFILE=smoke|load|stress|spike|abuse|race|ramp|book-ramp   (default: smoke)
 
 Run through docker-compose.loadtest.yml; see Spec06 §7.
 """
@@ -83,7 +83,10 @@ class ScenarioUser(HttpUser):
                 verdict.AGGREGATES[case["id"]].append((resp.status_code, (body or {}).get(same) if same else None))
             for key, path in step.get("save", {}).items():
                 ctx[key] = (body or {}).get(path)
-            return not errs
+            # A setup step may get a valid refusal (car busy, slot full): it passes, but the
+            # case stops, since the next steps need what this step was meant to create
+            go_on = step["expect"].get("continueOn")
+            return not errs and (go_on is None or resp.status_code in go_on)
 
 
 # ---- who sends what (Spec06 §4) ----------------------------------------------------------
@@ -117,6 +120,12 @@ class RampCustomer(ScenarioUser):
     run at RAMP_MAX_RPS (100) and the RPS curve is the user curve."""
     suites = ("70-ramp",)
     wait_time = constant_throughput(1)
+
+
+class BookingRampCustomer(RampCustomer):
+    """Same 1 case per second as RampCustomer, but on the booking API (Spec07): RampShape
+    drives 0 → RAMP_MAX_RPS with most requests being POST /appointments."""
+    suites = ("80-book-ramp",)
 
 
 class AbusiveClient(ScenarioUser):
@@ -160,8 +169,9 @@ PROFILES = {
     "abuse": (AbusiveClient,),
     "race": (RaceUser,),
     "ramp": (RampCustomer,),
+    "book-ramp": (BookingRampCustomer,),
 }
-for _cls in (SmokeUser, BrowsingCustomer, BookingCustomer, RampCustomer, AbusiveClient, RaceUser):
+for _cls in (SmokeUser, BrowsingCustomer, BookingCustomer, RampCustomer, BookingRampCustomer, AbusiveClient, RaceUser):
     _cls.abstract = _cls not in PROFILES[PROFILE]
 del _cls                                        # Locust collects classes from module globals
 
@@ -189,7 +199,7 @@ elif PROFILE == "spike":
         abstract = False
         stages = ((60, 20, 5), (90, 200, 100), (150, 200, 100), (210, 20, 50), (240, 0, 20))
 
-elif PROFILE == "ramp":
+elif PROFILE in ("ramp", "book-ramp"):
     class RampShape(LoadTestShape):
         """Linear ramp 0 → RAMP_MAX_RPS requests/s, hold at the top, then stop.
         One RampCustomer = 1 request/s, so the target user count is the target RPS."""
