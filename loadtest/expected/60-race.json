@@ -17,9 +17,9 @@
     },
     {
       "id": "RC-03",
-      "goal": "One car, many keys: the same vehicle booked 10 times at once with DIFFERENT keys at the hub, which has 6 free oil-change technicians and 8 bays → still exactly 1 x 201: the vehicle itself is a resource (DB-03).",
-      "expect": {"status": [201, 409]},
-      "aggregate": {"allowed": [201, 409], "exactly": {"201": 1, "409": 9}}
+      "goal": "One car, many keys: the same vehicle booked 10 times at once with DIFFERENT keys at the hub, which has 6 free oil-change technicians and 8 bays → still exactly 1 x 201, the rest 422 (Spec07 D2): the vehicle itself is a resource (DB-03).",
+      "expect": {"status": [201, 422]},
+      "aggregate": {"allowed": [201, 422], "exactly": {"201": 1, "422": 9}}
     }
   ]
 }

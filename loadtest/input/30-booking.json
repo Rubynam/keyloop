@@ -7,7 +7,7 @@
   "cases": [
     {
       "id": "BK-01",
-      "goal": "Normal booking at the hub: a random standard car, oil change, random 15-min slot 2–120 days ahead. Expected 201 with the assigned bay + technician, or 409 when that slot is already taken (by load or by the same vehicle).",
+      "goal": "Normal booking at the hub: a random standard car, oil change, random 15-min slot 2–120 days ahead. Expected 201 with the assigned bay + technician, 409 when that slot is already taken by load, or 422 when the same vehicle is already booked then (Spec07 D2).",
       "verifies": ["ROADMAP §1.3", "DLD §5", "NFR-03"],
       "weight": 20,
       "bind": {
@@ -93,7 +93,7 @@
     },
     {
       "id": "BK-03",
-      "goal": "Same vehicle, same time, NEW key → 409: one car cannot be in two bays at once (DB-03), even though the hub has free bays and technicians.",
+      "goal": "Same vehicle, same time, NEW key → 422 (Spec07 D2): one car cannot be in two bays at once (DB-03), even though the hub has free bays and technicians.",
       "verifies": ["Spec03 DB-03 ex_appointments_vehicle"],
       "weight": 3,
       "bind": {
@@ -170,7 +170,7 @@
     },
     {
       "id": "BK-05",
-      "goal": "Outside opening hours: 20:00 local at the hub (open 08:00–17:00) → 400.",
+      "goal": "Outside opening hours: 20:00 local at the hub (open 08:00–17:00) → 422 (Spec07 §5.1: valid shape, business rule fails).",
       "verifies": ["DLD §1 BookingValidator", "Spec03 §3.4 business hours in app"],
       "bind": {
         "v": "pool:standardCars",
@@ -193,7 +193,7 @@
     },
     {
       "id": "BK-06",
-      "goal": "Starts inside the hours but ENDS after closing: 16:30 + 60 min at the hub (closes 17:00) → 400. The whole window must fit.",
+      "goal": "Starts inside the hours but ENDS after closing: 16:30 + 60 min at the hub (closes 17:00) → 422 (Spec07 §5.1). The whole window must fit.",
       "verifies": ["ROADMAP §1.3 'entire service duration'"],
       "bind": {
         "v": "pool:standardCars",

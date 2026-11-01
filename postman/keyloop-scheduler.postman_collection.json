@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "keyloop-scheduler",
-    "description": "Manual / newman checks for the Scheduler API against docker compose + seed data (spec-read-availability). See postman/README.md.",
+    "description": "Manual / newman checks for the Scheduler API against docker compose + seed data (spec-read-availability, Spec07 booking). See postman/README.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -43,6 +43,22 @@
     },
     {
       "key": "futureDatePlus2",
+      "value": ""
+    },
+    {
+      "key": "bookingKey",
+      "value": ""
+    },
+    {
+      "key": "bookingStart",
+      "value": ""
+    },
+    {
+      "key": "bookingStartUtc",
+      "value": ""
+    },
+    {
+      "key": "appointmentId",
       "value": ""
     }
   ],
@@ -531,6 +547,977 @@
                   "    pm.response.to.have.status(200);",
                   "    pm.expect(body.days).to.have.lengthOf(3);",
                   "    body.days.forEach(d => pm.expect(d.slots).to.be.empty);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Appointments",
+      "description": "POST /api/v1/appointments (Spec07): happy path, replay, and one request per error case. Run in order: the replay and the 422s reuse the happy path's key and slot.",
+      "item": [
+        {
+          "name": "Book - happy path (hub, oil change)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{bookingKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"{{bookingStart}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "Random future slot on the 15-min grid at the hub. Saves the appointment id for the replay."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A fresh slot each run: random day 700-900 days ahead (outside the Spec06 load-test day ranges),",
+                  "// random 15-min start between 08:00 and 15:45 at the hub (Asia/Ho_Chi_Minh, +07:00, no DST)",
+                  "const day = 24 * 60 * 60 * 1000;",
+                  "const date = new Date(Date.now() + (700 + Math.floor(Math.random() * 200)) * day).toISOString().slice(0, 10);",
+                  "const minute = 8 * 60 + 15 * Math.floor(Math.random() * 32);",
+                  "const hh = String(Math.floor(minute / 60)).padStart(2, \"0\");",
+                  "const mm = String(minute % 60).padStart(2, \"0\");",
+                  "const start = `${date}T${hh}:${mm}:00+07:00`;",
+                  "pm.collectionVariables.set(\"bookingStart\", start);",
+                  "pm.collectionVariables.set(\"bookingStartUtc\", new Date(start).toISOString().replace(\".000Z\", \"Z\"));",
+                  "pm.collectionVariables.set(\"bookingKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"201 with Location, bay and technician\", () => {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.headers.get(\"Location\")).to.eql(`/api/v1/appointments/${body.id}`);",
+                  "    pm.expect(pm.response.headers.has(\"Idempotent-Replayed\")).to.be.false;",
+                  "    pm.expect(body.status).to.eql(\"CONFIRMED\");",
+                  "    pm.expect(body.serviceBayId).to.be.a(\"string\");",
+                  "    pm.expect(body.technicianId).to.be.a(\"string\");",
+                  "    pm.expect(body.vehicleId).to.eql(pm.environment.get(\"bookingVehicleId\"));",
+                  "});",
+                  "pm.test(\"times are UTC, 60 min\", () => {",
+                  "    pm.expect(body.startTime).to.eql(pm.collectionVariables.get(\"bookingStartUtc\"));",
+                  "    pm.expect(Date.parse(body.endTime) - Date.parse(body.startTime)).to.eql(60 * 60 * 1000);",
+                  "});",
+                  "pm.collectionVariables.set(\"appointmentId\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Book - replay (same key, same body)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{bookingKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"{{bookingStart}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "Same Idempotency-Key and body as the happy path: same appointment, header Idempotent-Replayed: true."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 replay: same id, Idempotent-Replayed\", () => {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.headers.get(\"Idempotent-Replayed\")).to.eql(\"true\");",
+                  "    pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get(\"appointmentId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 - key reused with another body",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{bookingKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"{{laterStart}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "Same Idempotency-Key, start one hour later (Spec07 D3)."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Same key, start one hour later",
+                  "const later = new Date(Date.parse(pm.collectionVariables.get(\"bookingStart\")) + 60 * 60 * 1000);",
+                  "pm.variables.set(\"laterStart\", later.toISOString().replace(\".000Z\", \"Z\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(422);",
+                  "    pm.expect(body.detail).to.eql(\"This Idempotency-Key was already used for a different request.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 - vehicle already booked",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"{{bookingStart}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "Same vehicle and time as the happy path, new key (Spec07 D2)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(422);",
+                  "    pm.expect(body.detail).to.eql(\"The vehicle already has an appointment at this time.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - missing startTime",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "Bean validation at the edge, no database read."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.eql(\"Invalid request\");",
+                  "    pm.expect(body.errors.map(e => e.field)).to.include(\"startTime\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - startTime in the past",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2020-01-06T09:00:00+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "@Future reads the app clock (Spec07 D5)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.eql(\"Invalid request\");",
+                  "    pm.expect(body.errors.map(e => e.field)).to.include(\"startTime\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - startTime without offset",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:00:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "A local time without offset cannot be read."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.eql(\"Invalid request\");",
+                  "    pm.expect(body.errors.map(e => e.field)).to.include(\"startTime\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - bad UUID",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"not-a-uuid\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "vehicleId is not a UUID."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.eql(\"Invalid request\");",
+                  "    pm.expect(body.errors.map(e => e.field)).to.include(\"vehicleId\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - missing Idempotency-Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "No Idempotency-Key header."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.eql(\"Invalid request\");",
+                  "    pm.expect(body.errors.map(e => e.field)).to.include(\"Idempotency-Key\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - vehicle of another customer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{noVehicleCustomerId}}\",\n  \"vehicleId\": \"{{hybridVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "Customer without vehicles + someone else's hybrid."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.eql(\"The vehicle does not belong to this customer.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 - unknown dealership",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{$guid}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "Random dealershipId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(404);",
+                  "});",
+                  "pm.test(\"names the dealership\", () => pm.expect(pm.response.json().detail).to.match(/^Dealership .* not found$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 - off the slot grid (09:07)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:07:00+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "Hub opens 08:00, step 15 min."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(422);",
+                  "    pm.expect(body.detail).to.eql(\"The start time must be on a 15-minute slot.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 - outside business hours (20:00)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T20:00:00+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "Hub is open 08:00-17:00 local."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(422);",
+                  "    pm.expect(body.detail).to.eql(\"The time is outside the dealership's business hours.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 - ends after closing (16:30 + 60 min)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T16:30:00+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "The whole window must fit inside the hours."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(422);",
+                  "    pm.expect(body.detail).to.eql(\"The time is outside the dealership's business hours.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 - not serviceable (hydrogen car)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{hydrogenCustomerId}}\",\n  \"vehicleId\": \"{{hydrogenVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "No bay or technician at the hub takes hydrogen cars."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(422);",
+                  "    pm.expect(body.detail).to.eql(\"No bay or technician at this dealership can service this vehicle.\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "409 - fully booked kiosk (2026-11-04 09:00)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{kioskDealershipId}}\",\n  \"serviceTypeId\": \"{{tyreRotationServiceTypeId}}\",\n  \"startTime\": \"2026-11-04T09:00:00+08:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "Seed fills the kiosk's only hour; skipped once the date has passed."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const live = Date.now() < Date.parse(\"2026-11-04T09:00:00+08:00\");",
+                  "(live ? pm.test : pm.test.skip)(\"409 Booking failed: the seed fills the kiosk hour\", () => {",
+                  "    pm.response.to.have.status(409);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.title).to.eql(\"Booking failed\");",
+                  "    pm.expect(body.detail).to.eql(\"Booking failed: no technician or service bay is available for the requested time. Please choose another slot.\");",
                   "});"
                 ]
               }
