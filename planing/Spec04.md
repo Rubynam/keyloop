@@ -52,44 +52,65 @@ No business logic is written here: the relay loop, the cleanup steps and `Bookin
 ### 4.1 Runtime
 - One Spring bean `OutboxRelay` in `scheduler-batch`, method `@Scheduled(fixedDelayString = "${scheduler.outbox.relay.poll-delay}")`.
 - **No ShedLock.** Several instances run together safely: `SKIP LOCKED` gives each one different rows. A lock would only make the instances queue up.
-- One tick handles one batch in one transaction. If the batch was full, the next batch starts at once instead of waiting for the next tick.
+- One tick claims up to `batch-size` rows, one row at a time, two short transactions per row (§4.2). If the tick claimed `batch-size` rows, the next tick starts at once instead of waiting for the next poll.
 
 ### 4.2 One tick
 
+Repeat up to `batch-size` times. Each row gets two transactions (story-outbox-relay Tasks 1–2):
+
 ```sql
--- inside one transaction
+-- TX A: claim one row and count the try
 SELECT id, event_type, payload, attempts
 FROM outbox_events
 WHERE processed_at IS NULL AND failed_at IS NULL
   AND next_attempt_at <= now()
 ORDER BY created_at, id            -- Spec03 §6.8: ids alone are not a strict time order
-LIMIT :batchSize
-FOR UPDATE SKIP LOCKED;
+LIMIT 1
+FOR UPDATE SKIP LOCKED;            -- none → end the tick
+
+-- attempts >= max-retries + 1 → failed_at = now(), last_error = CLAIM_EXHAUSTED (§4.5), no work
+UPDATE outbox_events
+SET attempts = attempts + 1, next_attempt_at = now() + :retryDelay   -- lease
+WHERE id = :id
+RETURNING attempts;                -- the claimed try number
+COMMIT;                            -- the try is counted, even if the JVM dies now
+
+-- TX B: lock the row again, then work under that lock
+SELECT id FROM outbox_events
+WHERE id = :id AND attempts = :claimed
+  AND processed_at IS NULL AND failed_at IS NULL
+FOR UPDATE SKIP LOCKED;            -- 0 rows → WARN, roll back, next row
 ```
 
-For each row:
+Then, in TX B:
 1. Read the dates from the payload (§4.4).
 2. For each `(dealershipId, date)`: `INCR avail:ver:{dealershipId}:{date}` and `EXPIRE … 2 days` (DLD §10).
 3. On success: `processed_at = now()`.
-4. On failure, apply §4.3.
+4. On failure, apply §4.3. After a Redis error the tick ends; the other due rows wait for the next tick.
 
-Then `COMMIT`. All timestamps come from Postgres `now()`, never from the JVM clock (same rule as ShedLock `usingDbTime()`).
+Then `COMMIT`. The writes of TX B need no extra `WHERE`: the re-lock protects them. The lease (`next_attempt_at` set at claim) only has to cover the short gap between TX A and TX B. All timestamps come from Postgres `now()`, never from the JVM clock (same rule as ShedLock `usingDbTime()`).
+
+The tick returns the number of rows claimed, exhausted rows included.
 
 ### 4.3 Retry policy
 
 **One try plus at most 3 retries, 2 seconds apart (fixed delay, no backoff). After that the event is `FAILED`.**
 
-| Try | Runs at (about) | On failure |
-|---|---|---|
-| First try | first tick after commit | `attempts = 1`, `next_attempt_at = now() + 2s` |
-| Retry 1 | +2 s | `attempts = 2`, `next_attempt_at = now() + 2s` |
-| Retry 2 | +4 s | `attempts = 3`, `next_attempt_at = now() + 2s` |
-| Retry 3 | +6 s | `attempts = 4` → **`failed_at = now()`**, `last_error` set, log ERROR |
+`attempts` is counted at the claim (TX A), before the work. So it means "tries started", and the work never changes it.
+
+| Try | Runs at (about) | `attempts` after claim | On failure |
+|---|---|---|---|
+| First try | first tick after commit | 1 | `next_attempt_at = now() + 2s` |
+| Retry 1 | +2 s | 2 | `next_attempt_at = now() + 2s` |
+| Retry 2 | +4 s | 3 | `next_attempt_at = now() + 2s` |
+| Retry 3 | +6 s | 4 | **`failed_at = now()`**, `last_error` set, log ERROR |
 
 - "About" means: plus up to one `poll-delay`, because a retry waits for the next tick. The relay never sleeps while holding row locks.
 - **Error kinds:**
-  - *Retryable*: Redis unreachable or timing out. These follow the table above.
-  - *Non-retryable*: payload is not a JSON object, `dealershipId` is missing, or a date is invalid. These go straight to `FAILED` on the first try, because retrying cannot fix them.
+  - *Retryable*: Redis unreachable or timing out, or any other runtime error during the bump. These follow the table above.
+  - *Non-retryable*: payload is not a JSON object, `dealershipId` is missing, or a date is invalid. These go straight to `FAILED` on the first try (`attempts = 1`), because retrying cannot fix them.
+  - *Crash* (the JVM dies, or an `Error`, during TX B): TX B rolls back but the try stays counted. Crashes and Redis errors share the same limit (§4.5).
+- Both values come from `scheduler.outbox.relay.max-retries` and `retry-delay` (§7).
 - **The booking is never changed by the relay.** An event in `FAILED` means only that the cache may be stale until its TTL (30–60 s) ends. The database constraints still block double-booking, and the next event for the same day bumps the version anyway (ROADMAP D1).
 
 ### 4.4 Payload contract (answers Q2)
@@ -113,12 +134,16 @@ Then `COMMIT`. All timestamps come from Postgres `now()`, never from the JVM clo
 
 | Crash point | What happens | Result |
 |---|---|---|
-| After `SELECT`, before Redis | Connection drops → Postgres rolls back and releases the row locks | Rows are picked up again by another instance or after restart |
-| After `INCR`, before `COMMIT` | Rollback, but Redis is already bumped | The bump runs again: one extra cache miss, no harm (`INCR` is idempotent in effect) |
+| In TX A, before `COMMIT` | Connection drops → Postgres rolls back and releases the row lock | The try is not counted; the row is due at once for another instance or after restart |
+| After TX A `COMMIT`, before or during TX B | TX B rolls back, the try stays counted, the lease (`retry-delay`) keeps the row away | The row is due again after `retry-delay` and is claimed as the next try |
+| After `INCR`, before TX B `COMMIT` | Rollback, but Redis is already bumped | The bump runs again on the next try: one extra cache miss, no harm (`INCR` is idempotent in effect) |
+| Every try crashes | `attempts` reaches `max-retries + 1` | The next claim marks the row FAILED with `last_error = CLAIM_EXHAUSTED: tries started but never finished` and logs ERROR (§4.6). No more tries |
 | Whole worker down | Events stay in the table (written in the booking transaction) | Drained after restart. Meanwhile the cache is stale for at most its TTL |
-| Process hangs inside the transaction | Row locks are held | Ended by `idle_in_transaction_session_timeout` (REL-06) and the Redis command timeout (REL-05) |
+| Process hangs inside a transaction | Row lock is held | Ended by `idle_in_transaction_session_timeout` (REL-06) and the Redis command timeout (REL-05) |
 
-Accepted risk: an event that makes the JVM itself crash is retried forever, because `attempts` is updated in the same transaction that dies. The relay only parses JSON and sends `INCR`, so this is unlikely. Payload errors are caught and become non-retryable failures.
+An event that makes the JVM crash is no longer retried forever: each crash costs one try, with the same limit as Redis errors (story-outbox-relay Task 1, OP2).
+
+**Rollout.** Old relays count the try in the work and new ones count it at the claim. Do not run both at once: set `scheduler.outbox.relay.enabled=false` on the old instances first, or scale the relay to one instance during the rollout.
 
 ### 4.6 Failure message (English, for operators)
 
@@ -132,6 +157,18 @@ For a non-retryable error:
 
 ```
 Outbox event {eventId} ({eventType}) has an invalid payload and was marked FAILED without retry: {reason}
+```
+
+When every try started but none finished (§4.5):
+
+```
+Outbox event {eventId} ({eventType}) was marked FAILED after {attempts} attempts that did not finish (the relay stopped during the work); availability may be stale until cache TTL expiry
+```
+
+When TX B cannot re-lock its claimed row (WARN, not a failure):
+
+```
+Outbox event {eventId} ({eventType}) skipped: another relay instance owns try {attempts}
 ```
 
 End users never see these messages. See §6 for what users see.
@@ -273,5 +310,5 @@ The keys move from `scheduler.jobs.outbox-*` to `scheduler.outbox.*`, because th
 - **Polling only, no `LISTEN/NOTIFY` yet.** A 500 ms poll gives sub-second invalidation, which is enough while the cache TTL is 30–60 s. `NOTIFY` needs a dedicated long-lived connection and does not survive a restart, so polling would be needed anyway. Revisit if relay lag becomes a problem.
 - **Fixed 2 s retry delay, no backoff.** Simple and matches the request. During a long Redis outage every event fails in about 6 s, which is acceptable because FAILED only means a cache that is stale until TTL.
 - **FAILED events are not replayed automatically.** An operator can reset them (`UPDATE … SET failed_at = NULL, attempts = 0, next_attempt_at = now()`). A replay endpoint or command is left for later.
-- **JVM-killing event loops forever** (§4.5). Accepted, see above.
+- **JVM-killing event** (§4.5). Closed: the try is counted in TX A, so such an event is FAILED after `max-retries` + 1 tries. Cost: two transactions per event instead of one per batch (more commits during a burst).
 - [ ] Which alert (log-based or metric) fires on a FAILED event while Prometheus is deferred?
