@@ -51,7 +51,7 @@ class SlotStepConfigIT extends IntegrationTest {
         UUID vehicle = fixtures.vehicle(customer, vehicleType);
 
         HttpResponse<String> availability = send(HttpRequest.newBuilder(uri("/api/v1/availability?dealershipId="
-                + dealer + "&serviceTypeId=" + service + "&vehicleTypeId=" + vehicleType + "&from=" + DAY + "&to=" + DAY))
+                + dealer + "&serviceBayId=" + bay + "&serviceTypeId=" + service + "&vehicleTypeId=" + vehicleType + "&from=" + DAY + "&to=" + DAY))
                 .GET());
         assertThat(availability.statusCode()).isEqualTo(200);
         List<String> minutes = new ArrayList<>();

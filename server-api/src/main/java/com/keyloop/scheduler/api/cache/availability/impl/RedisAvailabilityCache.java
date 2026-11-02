@@ -50,10 +50,16 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <h2>Keys</h2>
  * <pre>
- * avail:ver:{dealerId}:{date}                                         version, bumped by the relay
- * avail:{dealerId}:{date}:v{ver}:{serviceTypeId}:{vehicleTypeId}      JSON slot list of the full day
- * avail:lock:{dealerId}:{date}:v{ver}:{serviceTypeId}:{vehicleTypeId} rebuild lock, owner token
+ * avail:ver:{dealerId}:{date}                                                version, bumped by the relay
+ * avail:{dealerId}:{date}:v{ver}:{bayId}:{serviceTypeId}:{vehicleTypeId}      JSON slot list of the full day
+ * avail:lock:{dealerId}:{date}:v{ver}:{bayId}:{serviceTypeId}:{vehicleTypeId} rebuild lock, owner token
  * </pre>
+ *
+ * <h2>Why the version stays per dealership day, not per bay</h2>
+ * Technicians are shared by all bays. A booking on bay B1 with technician T1 makes T1
+ * busy, so bay B2 can lose the same slot when T1 is its only qualified technician.
+ * A version per bay would leave the B2 entry stale. So one bump still covers every
+ * bay of that dealership day.
  *
  * <h2>Version key</h2>
  * One booking changes every service type and vehicle type of that dealership day, so
@@ -125,19 +131,22 @@ public class RedisAvailabilityCache implements AvailabilityCache {
         return VERSION_KEY_PREFIX + dealershipId + KEY_SEPARATOR + date;
     }
 
-    static String slotsKey(UUID dealershipId, LocalDate date, long version, UUID serviceTypeId, UUID vehicleTypeId) {
+    static String slotsKey(UUID dealershipId, LocalDate date, long version, UUID serviceBayId, UUID serviceTypeId,
+                          UUID vehicleTypeId) {
         return SLOTS_KEY_PREFIX + dealershipId + KEY_SEPARATOR + date + KEY_VERSION_MARK + version
-                + KEY_SEPARATOR + serviceTypeId + KEY_SEPARATOR + vehicleTypeId;
+                + KEY_SEPARATOR + serviceBayId + KEY_SEPARATOR + serviceTypeId + KEY_SEPARATOR + vehicleTypeId;
     }
 
-    static String lockKey(UUID dealershipId, LocalDate date, long version, UUID serviceTypeId, UUID vehicleTypeId) {
+    static String lockKey(UUID dealershipId, LocalDate date, long version, UUID serviceBayId, UUID serviceTypeId,
+                          UUID vehicleTypeId) {
         return LOCK_KEY_PREFIX + dealershipId + KEY_SEPARATOR + date + KEY_VERSION_MARK + version
-                + KEY_SEPARATOR + serviceTypeId + KEY_SEPARATOR + vehicleTypeId;
+                + KEY_SEPARATOR + serviceBayId + KEY_SEPARATOR + serviceTypeId + KEY_SEPARATOR + vehicleTypeId;
     }
 
     @Override
-    public Lookup lookup(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId, List<LocalDate> dates) {
-        RedisLookup lookup = new RedisLookup(dealershipId, serviceTypeId, vehicleTypeId, dates);
+    public Lookup lookup(UUID dealershipId, UUID serviceBayId, UUID serviceTypeId, UUID vehicleTypeId,
+                         List<LocalDate> dates) {
+        RedisLookup lookup = new RedisLookup(dealershipId, serviceBayId, serviceTypeId, vehicleTypeId, dates);
         if (properties.enabled()) {
             lookup.readVersions();
         } else {
@@ -150,6 +159,7 @@ public class RedisAvailabilityCache implements AvailabilityCache {
     private final class RedisLookup implements Lookup {
 
         private final UUID dealershipId;
+        private final UUID serviceBayId;
         private final UUID serviceTypeId;
         private final UUID vehicleTypeId;
         private final List<LocalDate> dates;
@@ -157,8 +167,10 @@ public class RedisAvailabilityCache implements AvailabilityCache {
         /** Set after the first Redis error: the rest of the request does not try Redis again. */
         private boolean redisOff;
 
-        private RedisLookup(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId, List<LocalDate> dates) {
+        private RedisLookup(UUID dealershipId, UUID serviceBayId, UUID serviceTypeId, UUID vehicleTypeId,
+                            List<LocalDate> dates) {
             this.dealershipId = dealershipId;
+            this.serviceBayId = serviceBayId;
             this.serviceTypeId = serviceTypeId;
             this.vehicleTypeId = vehicleTypeId;
             this.dates = List.copyOf(dates);
@@ -265,11 +277,13 @@ public class RedisAvailabilityCache implements AvailabilityCache {
         }
 
         private String slotsKey(LocalDate date) {
-            return RedisAvailabilityCache.slotsKey(dealershipId, date, versions.get(date), serviceTypeId, vehicleTypeId);
+            return RedisAvailabilityCache.slotsKey(dealershipId, date, versions.get(date), serviceBayId,
+                    serviceTypeId, vehicleTypeId);
         }
 
         private String lockKey(LocalDate date) {
-            return RedisAvailabilityCache.lockKey(dealershipId, date, versions.get(date), serviceTypeId, vehicleTypeId);
+            return RedisAvailabilityCache.lockKey(dealershipId, date, versions.get(date), serviceBayId,
+                    serviceTypeId, vehicleTypeId);
         }
 
         /** Runs one Redis command; on a Redis error turns the cache off for this request and returns null. */

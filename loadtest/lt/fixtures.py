@@ -125,7 +125,7 @@ def bind_one(spec, ctx):
             return items[int(render(idx, ctx)) % len(items)]
         if kind == "bay":                       # the client picks the bay: one that takes every standard car
             dealer, _, idx = arg.partition(":")
-            bays = REFS["serviceBays"][dealer]
+            bays = REFS["bookingBays"][dealer]
             return bays[int(render(idx, ctx)) % len(bays)] if idx else random.choice(bays)
         raise ValueError(f"unknown bind {spec!r}")
     (kind, a), = spec.items()

@@ -17,6 +17,7 @@ import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse;
 import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse.Slot;
 import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
+import com.keyloop.scheduler.api.model.availability.ServiceBay;
 import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
 import com.keyloop.scheduler.api.service.availability.impl.AvailabilityServiceImpl;
 import com.keyloop.scheduler.api.support.IntegrationTest;
@@ -51,6 +52,7 @@ class AvailabilityRepositoryIT extends IntegrationTest {
     private UUID vehicleType;
     private UUID fittingBay;
     private UUID inactiveBay;
+    private UUID otherTypeBay;
     private UUID qualifiedTech;
     private UUID uncertifiedTech;
 
@@ -64,7 +66,7 @@ class AvailabilityRepositoryIT extends IntegrationTest {
 
         fittingBay = bay("Bay A", true, vehicleType);
         inactiveBay = bay("Bay inactive", false, vehicleType);
-        bay("Bay other type", true, otherType);
+        otherTypeBay = bay("Bay other type", true, otherType);
 
         qualifiedTech = technician("Tech qualified", vehicleType);
         uncertifiedTech = technician("Tech no cert", otherType);
@@ -84,6 +86,30 @@ class AvailabilityRepositoryIT extends IntegrationTest {
         assertThat(repository.findFittingBayIds(dealer, vehicleType)).containsExactly(fittingBay).doesNotContain(inactiveBay);
         assertThat(repository.findQualifiedTechnicianIds(dealer, service, vehicleType))
                 .containsExactly(qualifiedTech).doesNotContain(uncertifiedTech);
+    }
+
+    @Test
+    void serviceBayTellsNameAndFitAndIsScopedToTheDealership() {
+        assertThat(repository.findServiceBay(dealer, fittingBay, vehicleType)).get()
+                .isEqualTo(new ServiceBay("Bay A", true, true));
+        assertThat(repository.findServiceBay(dealer, inactiveBay, vehicleType)).get()
+                .isEqualTo(new ServiceBay("Bay inactive", false, true));
+        assertThat(repository.findServiceBay(dealer, otherTypeBay, vehicleType)).get()
+                .isEqualTo(new ServiceBay("Bay other type", true, false));
+
+        UUID otherDealer = id("INSERT INTO dealerships (name, timezone, open_time, close_time)"
+                + " VALUES ('IT other', 'UTC', '08:00', '17:00') RETURNING id");
+        assertThat(repository.findServiceBay(otherDealer, fittingBay, vehicleType)).isEmpty();
+        assertThat(repository.findServiceBay(dealer, UUID.randomUUID(), vehicleType)).isEmpty();
+    }
+
+    @Test
+    void serviceGivesNoSlotsForAnInactiveBay() {
+        AvailabilityResponse response = new AvailabilityServiceImpl(repository, new PassThroughAvailabilityCache(), LONG_AGO, STEP_15)
+                .find(dealer, inactiveBay, service, vehicleType, DAY, DAY);
+
+        assertThat(response.serviceBayName()).isEqualTo("Bay inactive");
+        assertThat(response.days().getFirst().slots()).isEmpty();
     }
 
     @Test
@@ -111,7 +137,7 @@ class AvailabilityRepositoryIT extends IntegrationTest {
     @Test
     void serviceBlocksConfirmedOffersCancelledBackToBackAndMidnightEnd() {
         AvailabilityResponse response = new AvailabilityServiceImpl(repository, new PassThroughAvailabilityCache(), LONG_AGO, STEP_15)
-                .find(dealer, service, vehicleType, DAY, DAY);
+                .find(dealer, fittingBay, service, vehicleType, DAY, DAY);
 
         assertThat(response.timezone()).isEqualTo("UTC");
         assertThat(response.durationMinutes()).isEqualTo(60);

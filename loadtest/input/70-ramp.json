@@ -20,6 +20,7 @@
         "name": "/api/v1/availability [hot]",
         "query": {
           "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceBayId": "{{ref.serviceBays.Q7_STANDARD}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
           "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
           "from": "{{from}}",
@@ -42,6 +43,7 @@
         "name": "/api/v1/availability [hot]",
         "query": {
           "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceBayId": "{{ref.serviceBays.Q7_STANDARD}}",
           "serviceTypeId": "{{ref.serviceTypes.TYRE_ROTATION}}",
           "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
           "from": "{{from}}",
@@ -61,6 +63,7 @@
         "name": "/api/v1/availability [cold]",
         "query": {
           "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceBayId": "{{ref.serviceBays.Q7_STANDARD}}",
           "serviceTypeId": "{{ref.serviceTypes.BRAKE_SERVICE}}",
           "vehicleTypeId": "{{ref.vehicleTypes.DIESEL_CAR}}",
           "from": "{{day}}",
@@ -83,6 +86,7 @@
         "name": "/api/v1/availability [invalid]",
         "query": {
           "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceBayId": "{{ref.serviceBays.Q7_STANDARD}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
           "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
           "from": "{{from}}",
@@ -105,6 +109,7 @@
         "name": "/api/v1/availability [unknown]",
         "query": {
           "dealershipId": "{{dealer}}",
+          "serviceBayId": "{{ref.serviceBays.Q7_STANDARD}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
           "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
           "from": "{{day}}",
