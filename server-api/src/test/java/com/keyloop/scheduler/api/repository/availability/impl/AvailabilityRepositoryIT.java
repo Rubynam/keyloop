@@ -89,7 +89,7 @@ class AvailabilityRepositoryIT extends IntegrationTest {
     @Test
     void repositoryReadsHoursAndSkipsCancelledBookings() {
         assertThat(repository.findDealership(dealer)).get()
-                .isEqualTo(new Dealership("UTC", 0, 1440));
+                .isEqualTo(new Dealership("IT 24h", "UTC", 0, 1440));
 
         List<Booking> bookings = repository.findBookings(dealer, List.of(fittingBay),
                 List.of(qualifiedTech), Instant.parse(DAY + "T00:00:00Z"), Instant.parse(DAY.plusDays(1) + "T00:00:00Z"));
@@ -105,7 +105,7 @@ class AvailabilityRepositoryIT extends IntegrationTest {
                 + " VALUES ('IT odd', 'UTC', '08:00:30', '16:59:30') RETURNING id");
 
         assertThat(repository.findDealership(odd)).get()
-                .isEqualTo(new Dealership("UTC", 8 * 60 + 1, 16 * 60 + 59));
+                .isEqualTo(new Dealership("IT odd", "UTC", 8 * 60 + 1, 16 * 60 + 59));
     }
 
     @Test

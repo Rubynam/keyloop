@@ -55,7 +55,7 @@ class AppointmentControllerTest {
     private static final UUID BAY = UUID.fromString("01942976-3400-790c-bca3-04171fb17c05");
     private static final UUID TECH = UUID.fromString("01942976-3400-790c-bca3-04171fb17c06");
     private static final AppointmentResponse BOOKED = new AppointmentResponse(ID, AppointmentStatus.CONFIRMED,
-            DEALER, BAY, TECH, SERVICE, VEHICLE,
+            DEALER, "Hub", BAY, "Bay 2", TECH, "An Nguyen", SERVICE, "Oil change", VEHICLE, "TOYOTA Vios 2022",
             Instant.parse("2026-11-02T02:00:00Z"), Instant.parse("2026-11-02T03:00:00Z"));
 
     @TestConfiguration(proxyBeanMethods = false)
@@ -123,6 +123,11 @@ class AppointmentControllerTest {
                 .andExpect(jsonPath("$.status").value("CONFIRMED"))
                 .andExpect(jsonPath("$.serviceBayId").value(BAY.toString()))
                 .andExpect(jsonPath("$.technicianId").value(TECH.toString()))
+                .andExpect(jsonPath("$.dealershipName").value("Hub"))
+                .andExpect(jsonPath("$.serviceBayName").value("Bay 2"))
+                .andExpect(jsonPath("$.technicianName").value("An Nguyen"))
+                .andExpect(jsonPath("$.serviceTypeName").value("Oil change"))
+                .andExpect(jsonPath("$.vehicleName").value("TOYOTA Vios 2022"))
                 .andExpect(jsonPath("$.startTime").value("2026-11-02T02:00:00Z"))
                 .andExpect(jsonPath("$.endTime").value("2026-11-02T03:00:00Z"));
     }

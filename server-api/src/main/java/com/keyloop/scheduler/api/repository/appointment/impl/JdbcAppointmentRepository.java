@@ -15,6 +15,7 @@ import com.keyloop.scheduler.api.exception.appointment.SlotTakenException;
 import com.keyloop.scheduler.api.exception.appointment.SlotTakenException.Resource;
 import com.keyloop.scheduler.api.exception.appointment.VehicleOwnerMismatchException;
 import com.keyloop.scheduler.api.model.AppointmentStatus;
+import com.keyloop.scheduler.api.model.appointment.AppointmentNames;
 import com.keyloop.scheduler.api.model.appointment.NewAppointment;
 import com.keyloop.scheduler.api.model.appointment.StoredAppointment;
 import com.keyloop.scheduler.api.model.appointment.VehicleRef;
@@ -90,6 +91,34 @@ public class JdbcAppointmentRepository implements AppointmentRepository {
                 .query((rs, n) -> new VehicleRef(rs.getObject("id", UUID.class),
                         rs.getObject("customer_id", UUID.class), rs.getObject("vehicle_type_id", UUID.class)))
                 .optional();
+    }
+
+    @Override
+    public AppointmentNames findNames(StoredAppointment a) {
+        // Every id is a NOT NULL foreign key of the appointment, so exactly one row comes back
+        return jdbc.sql("""
+                        SELECT d.name  AS dealership_name,
+                               b.name  AS service_bay_name,
+                               t.name  AS technician_name,
+                               st.name AS service_type_name,
+                               ci.brand || ' ' || ci.name || ' ' || v.year AS vehicle_name
+                        FROM dealerships d, service_bays b, technicians t, service_types st,
+                             vehicles v JOIN car_info ci ON ci.id = v.car_info_id
+                        WHERE d.id = :dealershipId AND b.id = :serviceBayId AND t.id = :technicianId
+                          AND st.id = :serviceTypeId AND v.id = :vehicleId
+                        """)
+                .param("dealershipId", a.dealershipId())
+                .param("serviceBayId", a.serviceBayId())
+                .param("technicianId", a.technicianId())
+                .param("serviceTypeId", a.serviceTypeId())
+                .param("vehicleId", a.vehicleId())
+                .query((rs, n) -> new AppointmentNames(
+                        rs.getString("dealership_name"),
+                        rs.getString("service_bay_name"),
+                        rs.getString("technician_name"),
+                        rs.getString("service_type_name"),
+                        rs.getString("vehicle_name")))
+                .single();
     }
 
     @Override

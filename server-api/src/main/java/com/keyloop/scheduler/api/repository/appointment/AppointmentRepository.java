@@ -8,6 +8,7 @@ import com.keyloop.scheduler.api.exception.appointment.DuplicateIdempotencyKeyEx
 import com.keyloop.scheduler.api.exception.appointment.ResourceGoneException;
 import com.keyloop.scheduler.api.exception.appointment.SlotTakenException;
 import com.keyloop.scheduler.api.exception.appointment.VehicleOwnerMismatchException;
+import com.keyloop.scheduler.api.model.appointment.AppointmentNames;
 import com.keyloop.scheduler.api.model.appointment.NewAppointment;
 import com.keyloop.scheduler.api.model.appointment.StoredAppointment;
 import com.keyloop.scheduler.api.model.appointment.VehicleRef;
@@ -21,6 +22,7 @@ import com.keyloop.scheduler.api.model.appointment.VehicleRef;
  * findById(A1)                     → Optional[A1]
  * findByIdempotencyKey("k1")       → Optional[A1]
  * findVehicle(V1)                  → Optional[VehicleRef(V1, C1, SUV)]
+ * findNames(A1)                    → AppointmentNames("Keyloop Hub", "Bay 2", ...)
  * customerExists(C1)               → true
  * vehicleHasOverlap(V1, 09:00, 10:00) → false
  * insert(new A for (B2, T2))       → A1   or  SlotTakenException(BAY) ...
@@ -54,6 +56,17 @@ public interface AppointmentRepository {
      * </pre>
      */
     Optional<VehicleRef> findVehicle(UUID vehicleId);
+
+    /**
+     * Display names of the dealership, bay, technician, service type and vehicle of a
+     * stored appointment. Reads by those ids, so it also works inside the insert
+     * transaction. The vehicle name is {@code brand model year}.
+     *
+     * <pre>
+     * A1 → AppointmentNames("Keyloop Hub", "Bay 2", "An Nguyen", "Oil change", "TOYOTA Vios 2022")
+     * </pre>
+     */
+    AppointmentNames findNames(StoredAppointment appointment);
 
     /**
      * Whether the customer exists, so the service can answer 404.

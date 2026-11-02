@@ -23,6 +23,7 @@ import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse;
 import com.keyloop.scheduler.api.exception.availability.InvalidRangeException;
 import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
+import com.keyloop.scheduler.api.model.availability.ServiceType;
 import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
 import com.keyloop.scheduler.api.support.PassThroughAvailabilityCache;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,9 +51,9 @@ class AvailabilityServiceTest {
 
     @BeforeEach
     void knownIds() {
-        when(repository.findDealership(DEALER)).thenReturn(Optional.of(new Dealership("UTC", 8 * 60, 17 * 60)));
-        when(repository.findServiceDurationMinutes(SERVICE)).thenReturn(Optional.of(60));
-        when(repository.vehicleTypeExists(VEHICLE)).thenReturn(true);
+        when(repository.findDealership(DEALER)).thenReturn(Optional.of(new Dealership("Hub", "UTC", 8 * 60, 17 * 60)));
+        when(repository.findServiceType(SERVICE)).thenReturn(Optional.of(new ServiceType("Oil change", 60)));
+        when(repository.findVehicleTypeName(VEHICLE)).thenReturn(Optional.of("SUV"));
     }
 
     private void resources(List<UUID> bays, List<UUID> technicians, Booking... bookings) {

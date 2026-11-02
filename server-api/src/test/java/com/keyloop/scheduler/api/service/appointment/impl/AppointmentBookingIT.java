@@ -122,6 +122,12 @@ class AppointmentBookingIT extends IntegrationTest {
         assertThat(body.get("status").asString()).isEqualTo("CONFIRMED");
         assertThat(body.get("serviceBayId").asString()).isEqualTo(bay.toString());
         assertThat(body.get("technicianId").asString()).isEqualTo(tech.toString());
+        // Names sit next to the ids, read from the same rows
+        assertThat(body.get("serviceBayName").asString()).startsWith("Bay ");
+        assertThat(body.get("technicianName").asString()).startsWith("Tech ");
+        assertThat(body.get("serviceTypeName").asString()).isEqualTo("IT service");
+        assertThat(body.get("dealershipName").asString()).isNotBlank();
+        assertThat(body.get("vehicleName").asString()).isNotBlank();
         // 09:00 in Ho Chi Minh (+07:00) is 02:00 UTC
         assertThat(body.get("startTime").asString()).isEqualTo(DAY + "T02:00:00Z");
         assertThat(body.get("endTime").asString()).isEqualTo(DAY + "T03:00:00Z");

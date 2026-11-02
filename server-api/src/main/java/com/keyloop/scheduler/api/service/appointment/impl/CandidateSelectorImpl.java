@@ -52,8 +52,9 @@ public class CandidateSelectorImpl implements CandidateSelector {
     public CandidateResult select(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId, Instant start) {
         Dealership dealership = availability.findDealership(dealershipId)
                 .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_DEALERSHIP, dealershipId));
-        int duration = availability.findServiceDurationMinutes(serviceTypeId)
-                .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_SERVICE_TYPE, serviceTypeId));
+        int duration = availability.findServiceType(serviceTypeId)
+                .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_SERVICE_TYPE, serviceTypeId))
+                .durationMinutes();
         Instant end = start.plus(Duration.ofMinutes(duration));
 
         // 1. Fitting resources

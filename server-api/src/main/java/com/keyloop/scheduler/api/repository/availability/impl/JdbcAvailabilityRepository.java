@@ -11,6 +11,7 @@ import java.util.UUID;
 import com.keyloop.scheduler.api.model.AppointmentStatus;
 import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
+import com.keyloop.scheduler.api.model.availability.ServiceType;
 import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -33,31 +34,31 @@ public class JdbcAvailabilityRepository implements AvailabilityRepository {
         // EXTRACT keeps '24:00' as 1440; a LocalTime cannot hold it. Seconds round inwards
         // (open up, close down) so a slot never starts before open or ends after close.
         return jdbc.sql("""
-                        SELECT timezone,
+                        SELECT name, timezone,
                                ceil(EXTRACT(EPOCH FROM open_time) / 60)::int   AS open_minute,
                                floor(EXTRACT(EPOCH FROM close_time) / 60)::int AS close_minute
                         FROM dealerships WHERE id = :id
                         """)
                 .param("id", id)
-                .query((rs, n) -> new Dealership(
+                .query((rs, n) -> new Dealership(rs.getString("name"),
                         rs.getString("timezone"), rs.getInt("open_minute"), rs.getInt("close_minute")))
                 .optional();
     }
 
     @Override
-    public Optional<Integer> findServiceDurationMinutes(UUID serviceTypeId) {
-        return jdbc.sql("SELECT duration_minutes FROM service_types WHERE id = :id")
+    public Optional<ServiceType> findServiceType(UUID serviceTypeId) {
+        return jdbc.sql("SELECT name, duration_minutes FROM service_types WHERE id = :id")
                 .param("id", serviceTypeId)
-                .query(Integer.class)
+                .query((rs, n) -> new ServiceType(rs.getString("name"), rs.getInt("duration_minutes")))
                 .optional();
     }
 
     @Override
-    public boolean vehicleTypeExists(UUID vehicleTypeId) {
-        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM vehicle_types WHERE id = :id)")
+    public Optional<String> findVehicleTypeName(UUID vehicleTypeId) {
+        return jdbc.sql("SELECT name FROM vehicle_types WHERE id = :id")
                 .param("id", vehicleTypeId)
-                .query(Boolean.class)
-                .single();
+                .query(String.class)
+                .optional();
     }
 
     @Override

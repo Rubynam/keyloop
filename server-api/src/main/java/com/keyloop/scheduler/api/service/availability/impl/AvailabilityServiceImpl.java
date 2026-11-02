@@ -25,6 +25,7 @@ import com.keyloop.scheduler.api.exception.availability.InvalidRangeException;
 import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
 import com.keyloop.scheduler.api.model.availability.Interval;
+import com.keyloop.scheduler.api.model.availability.ServiceType;
 import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
 import com.keyloop.scheduler.api.service.availability.AvailabilityService;
 import org.springframework.stereotype.Service;
@@ -64,11 +65,11 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 
         Dealership dealership = repository.findDealership(dealershipId)
                 .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_DEALERSHIP, dealershipId));
-        int duration = repository.findServiceDurationMinutes(serviceTypeId)
+        ServiceType serviceType = repository.findServiceType(serviceTypeId)
                 .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_SERVICE_TYPE, serviceTypeId));
-        if (!repository.vehicleTypeExists(vehicleTypeId)) {
-            throw new NotFoundException(ErrorMessages.ENTITY_VEHICLE_TYPE, vehicleTypeId);
-        }
+        String vehicleTypeName = repository.findVehicleTypeName(vehicleTypeId)
+                .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_VEHICLE_TYPE, vehicleTypeId));
+        int duration = serviceType.durationMinutes();
         ZoneId zone = zoneOf(dealership);
 
         Map<LocalDate, List<Slot>> fullDays = lookup.slots(missing ->
@@ -78,8 +79,8 @@ public class AvailabilityServiceImpl implements AvailabilityService {
         List<AvailabilityResponse.Day> days = dates.stream()
                 .map(date -> new AvailabilityResponse.Day(date, SlotCalculator.notStartedBefore(fullDays.get(date), now)))
                 .toList();
-        return new AvailabilityResponse(dealershipId, serviceTypeId, vehicleTypeId,
-                dealership.timezone(), duration, days);
+        return new AvailabilityResponse(dealershipId, dealership.name(), serviceTypeId, serviceType.name(),
+                vehicleTypeId, vehicleTypeName, dealership.timezone(), duration, days);
     }
 
     /** Full-day slot lists (no now-cut) for the given dates, from PostgreSQL. */
