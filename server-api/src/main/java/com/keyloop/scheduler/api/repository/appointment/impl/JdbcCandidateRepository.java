@@ -6,16 +6,19 @@ import java.time.ZoneOffset;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.keyloop.scheduler.api.model.AppointmentStatus;
+import com.keyloop.scheduler.api.model.appointment.BookableBay;
 import com.keyloop.scheduler.api.repository.appointment.CandidateRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 /**
- * Ordering facts for candidate selection (candidate-selection.md steps 3–4). Fit and
- * overlap reuse {@code AvailabilityRepository}. Plain {@link JdbcClient}, PostgreSQL only.
+ * Facts for candidate selection: the chosen bay and technician load (candidate-selection.md).
+ * Technician fit and overlap reuse {@code AvailabilityRepository}. Plain {@link JdbcClient},
+ * PostgreSQL only.
  */
 @Repository
 public class JdbcCandidateRepository implements CandidateRepository {
@@ -27,19 +30,23 @@ public class JdbcCandidateRepository implements CandidateRepository {
     }
 
     @Override
-    public Map<UUID, Integer> countVehicleTypes(Collection<UUID> bayIds) {
-        Map<UUID, Integer> counts = new HashMap<>();
-        jdbc.sql("""
-                        SELECT service_bay_id, count(*)::int AS types
-                        FROM service_bay_vehicle_types
-                        WHERE service_bay_id IN (:bayIds)
-                        GROUP BY service_bay_id
+    public Optional<BookableBay> findBookableBay(UUID dealershipId, UUID serviceBayId, UUID vehicleTypeId) {
+        return jdbc.sql("""
+                        SELECT b.id, b.active,
+                               EXISTS (SELECT 1 FROM service_bay_vehicle_types bv
+                                       WHERE bv.service_bay_id = b.id
+                                         AND bv.vehicle_type_id = :vehicleTypeId) AS takes_vehicle_type
+                        FROM service_bays b
+                        WHERE b.id = :serviceBayId AND b.dealership_id = :dealershipId
                         """)
-                .param("bayIds", bayIds)
-                .query(rs -> {
-                    counts.put(rs.getObject("service_bay_id", UUID.class), rs.getInt("types"));
-                });
-        return counts;
+                .param("dealershipId", dealershipId)
+                .param("serviceBayId", serviceBayId)
+                .param("vehicleTypeId", vehicleTypeId)
+                .query((rs, n) -> new BookableBay(
+                        rs.getObject("id", UUID.class),
+                        rs.getBoolean("active"),
+                        rs.getBoolean("takes_vehicle_type")))
+                .optional();
     }
 
     @Override

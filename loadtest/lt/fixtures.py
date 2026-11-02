@@ -19,6 +19,7 @@ Tokens {{dotted.path}} resolve against a per-execution context:
     <bind>.* values the case binds ("bind": {"v": "pool:standardCars"})
     <save>.* values a previous step saved from its response ("save": {"apptId": "id"})
     v, start, wave.no   wave cases only: the car of this client and the slot of this wave
+    wave.client         wave cases only: 0-based index of this client in its wave
     run.*    run.id (unique per locust process) and run.user (unique per simulated user)
 """
 import json
@@ -109,7 +110,8 @@ def _iso(dt):
 
 
 def bind_one(spec, ctx):
-    """One binding. Strings: "pool:<name>", "pick:<name>:<index token>", "uuid".
+    """One binding. Strings: "pool:<name>", "pick:<name>:<index token>", "uuid",
+    "bay:<dealership>" (random standard bay), "bay:<dealership>:<index token>" (deterministic).
     Objects: {"date": {...}}, {"at": {...}}, {"slot": {...}} — times in the dealership's zone."""
     if isinstance(spec, str):
         kind, _, arg = spec.partition(":")
@@ -121,6 +123,10 @@ def bind_one(spec, ctx):
             pool, _, idx = arg.partition(":")
             items = REFS["pools"][pool]
             return items[int(render(idx, ctx)) % len(items)]
+        if kind == "bay":                       # the client picks the bay: one that takes every standard car
+            dealer, _, idx = arg.partition(":")
+            bays = REFS["bookingBays"][dealer]
+            return bays[int(render(idx, ctx)) % len(bays)] if idx else random.choice(bays)
         raise ValueError(f"unknown bind {spec!r}")
     (kind, a), = spec.items()
     if kind == "shift":                         # an earlier bind moved by N minutes
@@ -166,7 +172,8 @@ def new_wave(case, run_id, wave_no):
     cars = [c for c in REFS["pools"]["standardCars"] if c["vehicleType"] == w["vehicleType"]]
     picked = [random.choice(cars)] * w["clients"] if w.get("sameVehicle") else random.sample(cars, w["clients"])
     start = wave_start(w["slot"], wave_no)
-    return [{**new_context(run_id, wave_no), "wave": {"no": wave_no}, "v": car, "start": start} for car in picked]
+    return [{**new_context(run_id, wave_no), "wave": {"no": wave_no, "client": i}, "v": car, "start": start}
+            for i, car in enumerate(picked)]
 
 
 def bind(case, ctx):

@@ -215,8 +215,9 @@ class TracingIT {
 
     private String body(UUID customer, UUID vehicle, String start) {
         return """
-                {"customerId":"%s","vehicleId":"%s","dealershipId":"%s","serviceTypeId":"%s","startTime":"%s"}
-                """.formatted(customer, vehicle, dealer, service, start);
+                {"customerId":"%s","vehicleId":"%s","dealershipId":"%s","serviceTypeId":"%s","serviceBayId":"%s",\
+                "startTime":"%s"}
+                """.formatted(customer, vehicle, dealer, service, bay, start);
     }
 
     private static String local(String time) {

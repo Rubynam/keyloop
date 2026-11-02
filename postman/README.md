@@ -30,12 +30,13 @@ To hit a host-run API (`scripts/run-server-api.sh`), set `baseUrl` to `http://lo
 | | Open 24h (roadside hub) | last slot `23:00Z`–`00:00Z` next day |
 | | Hydrogen car | `200`, every date empty |
 | | Inactive bay (hub Bay 08) / bay that does not take the vehicle type (hub EV Bay 01, gasoline car) | `200`, every date empty, bay name echoed |
-| Appointments | Book - happy path (hub, oil change) | `201`, `Location`, bay + technician, UTC times, 60 min; random slot 700–900 days ahead |
+| Appointments | Book - happy path (hub, oil change) | `201`, `Location`, the chosen bay (`hubBayId`) + a technician, UTC times, 60 min; random slot 700–900 days ahead |
 | | Book - replay | same key + body → `201`, same id, `Idempotent-Replayed: true` |
 | | Key reused with another body / vehicle already booked | `422` |
-| | Missing `startTime`, past start, no offset, bad UUID, missing `Idempotency-Key` | `400` with `errors[].field` |
+| | Missing `serviceBayId`, missing `startTime`, past start, no offset, bad UUID, missing `Idempotency-Key` | `400` with `errors[].field` |
 | | Vehicle of another customer | `400` |
 | | Unknown dealership | `404` naming the dealership |
+| | Bay of another dealership (`riversideBayId` at the hub) | `404` naming the service bay |
 | | Off the slot grid (09:07), outside hours (20:00), ends after closing (16:30), hydrogen car | `422` |
 | | Fully booked kiosk (2026-11-04 09:00) | `409` "Booking failed"; skipped once the date has passed |
 | Errors | Unknown dealership / service type / vehicle type | `404` ProblemDetail |

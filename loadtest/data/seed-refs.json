@@ -514,5 +514,35 @@
       "01941fce-62d8-770c-8128-4151b401ba85",
       "01941fce-7660-73a8-b816-cf84f8c110fb"
     ]
+  },
+  "bookingBays": {
+    "Q7": [
+      "01941fce-4b68-7295-9b9e-0da9b4d19ec1",
+      "01941fce-4f50-7fe7-99d8-04d983feb17b",
+      "01941fce-5338-756d-8c87-14a56bd8c676",
+      "01941fce-5720-75b4-85e6-81c7518ae452",
+      "01941fce-5b08-7b8d-813f-35555daf106d",
+      "01941fce-5ef0-7568-9d5a-dca28dd63cb9",
+      "01941fce-62d8-770c-8128-4151b401ba85"
+    ],
+    "LONDON": [
+      "01941fce-ad10-7044-85ab-1064a26aa0ae",
+      "01941fce-b0f8-7cd3-855c-099a42b38755"
+    ],
+    "OSLO_EV": [],
+    "ROTTERDAM_TRUCK": [],
+    "KATHMANDU": [
+      "01941fce-b8c8-7110-b737-b48143b30f66",
+      "01941fce-bcb0-71f2-80bd-2cd0742a8063"
+    ],
+    "KIRITIMATI": [
+      "01941fce-d038-73d0-8701-40b1f0290531",
+      "01941fce-d420-7f81-90c2-e47b2954ba5c"
+    ],
+    "EXPRESS_KIOSK": [
+      "01941fce-fb30-7fa6-a0e9-398a30803889"
+    ],
+    "STAFF_ONLY": [],
+    "CLOSED": []
   }
 }

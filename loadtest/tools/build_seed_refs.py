@@ -108,6 +108,20 @@ refs = {
     },
 }
 
+# Bays a booking may name (the client picks the bay): active bays of each dealership that take
+# every standard car type, so any car of pools.standardCars fits. Ordered by id. A list per
+# dealership, so load can spread over bays; serviceBays above holds single named bays.
+STANDARD_TYPES = {"GASOLINE_CAR", "DIESEL_CAR", "HYBRID_CAR"}
+types_of_bay = {}
+for r in bay_types:
+    types_of_bay.setdefault(r["service_bay_id"], set()).add(vt[r["vehicle_type_id"]])
+refs["bookingBays"] = {
+    name: sorted(b["id"] for b in bays
+                 if b["dealership_id"] == did and b["active"] == "TRUE" and STANDARD_TYPES <= types_of_bay.get(b["id"], set()))
+    for name, did in refs["dealerships"].items()
+}
+
 OUT.parent.mkdir(parents=True, exist_ok=True)
 OUT.write_text(json.dumps(refs, indent=2, ensure_ascii=False) + "\n")
-print(f"wrote {OUT.relative_to(ROOT)}: {len(refs['pools']['standardCars'])} standard cars")
+print(f"wrote {OUT.relative_to(ROOT)}: {len(refs['pools']['standardCars'])} standard cars, "
+      f"{len(refs['bookingBays']['Q7'])} booking bays at Q7")
