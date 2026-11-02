@@ -56,3 +56,24 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-tracing-baseline.md`
   summary: Add a server-api test that creates a parent-less JDBC `query` span and proves `RootSpanExportingPredicate` drops it.
   evidence: server-api AC5 cannot fail on the JDBC branch today: health uses `Connection.isValid` (no QUERY span) and no other non-request SQL exists. Add when one appears.
+- source_spec: none
+  summary: Outbox relay Task 6 (OP3) — seed a new `avail:ver:{dealershipId}:{date}` key with Redis `TIME` via `bump-version.lua` so a restarted counter never repeats an old version.
+  evidence: Split from story-outbox-relay on 2026-11-01; independently shippable (only changes the bump script + AC6.x tests), not needed for the claim/relock correctness fix.
+- source_spec: none
+  summary: Outbox relay Task 7 — health log lines (`OutboxRelayHealthLog`, backlog/eviction checks, `health-log-interval`, `backlog-warn-age`).
+  evidence: Split from story-outbox-relay on 2026-11-01; independently shippable operability work (new scheduled class + repository/store reads), no coupling to the claim/relock change.
+- source_spec: `_bmad-output/implementation-artifacts/spec-outbox-relay-claim-relock.md`
+  summary: Outbox relay Task 3 — `@Validated` `OutboxRelayProperties` (`@Positive` batch-size, `@PositiveOrZero` max-retries, `@DurationMin(millis = 1)` durations, add validation starter) with AC3.1 (`OutboxRelayPropertiesTest`) and AC3.2 (`max-retries: 1`, `retry-delay: 500ms` for Redis-down and crash paths).
+  evidence: Split on 2026-11-01 at the spec token gate (user asked for a smaller spec); independent of the claim/relock fix.
+- source_spec: `_bmad-output/implementation-artifacts/spec-outbox-relay-claim-relock.md`
+  summary: Outbox relay AC-F.3 — a version key holding a non-integer (`ERR value is not an integer`) fails the row on the first try with `INVALID_VERSION_KEY_LOG` instead of retrying (new `InvalidVersionKeyException` from the store).
+  evidence: Split on 2026-11-01 at the spec token gate; until then such a row follows the Redis-error retry path (3 retries, then FAILED), which is safe but slower.
+- source_spec: `_bmad-output/implementation-artifacts/spec-outbox-relay-claim-relock.md`
+  summary: `AvailabilityVersionStore.bump(dealershipId, List<LocalDate>)` — all dates of one row in one Redis pipeline; do it together with Task 6 (Lua seed script per date).
+  evidence: Split on 2026-11-01 at the spec token gate; a performance change (one round trip per row), not needed for crash counting, and it shares code with Task 6.
+- source_spec: `_bmad-output/implementation-artifacts/spec-outbox-relay-claim-relock.md`
+  summary: `OutboxRelay.relay()` starts another tick when a Redis error stops `tick()` on the `batch-size`-th row (with `batch-size: 1`, every Redis error) — return a "stopped" signal or exclude the failed row so the loop waits for `poll-delay`.
+  evidence: Review pass 1 (V2); pre-existing — baseline `tick()` also returned `rows.size()` after a Redis error.
+- source_spec: `_bmad-output/implementation-artifacts/spec-outbox-relay-claim-relock.md`
+  summary: `batch-size: 0` (or negative) makes `OutboxRelay.relay()` spin forever (`tick() == 0 == batchSize`); fixed by the deferred Task 3 `@Positive` validation.
+  evidence: Review pass 1 (E3); pre-existing loop condition, same at baseline.

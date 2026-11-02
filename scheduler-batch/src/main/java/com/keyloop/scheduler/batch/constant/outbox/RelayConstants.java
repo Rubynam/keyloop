@@ -40,10 +40,21 @@ public final class RelayConstants {
     /** {@code last_error} of a Redis failure: exception simple name, then its message. */
     public static final String REDIS_ERROR = "%s: %s";
 
+    /** Spec04 §4.3, a failed try with retries left: try, event id, event type, retry delay, error. */
+    public static final String RETRY_SCHEDULED_LOG =
+            "Cache invalidation try {} failed for outbox event {} ({}), next try in {}: {}";
     /** Spec04 §4.6, after the last retry. */
     public static final String FAILED_AFTER_RETRIES_LOG = "Cache invalidation failed after {} attempts for outbox event {} ({}, "
             + "dealership {}, dates {}); availability may be stale until cache TTL expiry. Last error: {}";
     /** Spec04 §4.6, bad payload. */
     public static final String INVALID_PAYLOAD_LOG =
             "Outbox event {} ({}) has an invalid payload and was marked FAILED without retry: {}";
+
+    /** {@code last_error} of a row whose tries all started but none finished (the relay stopped during the work). */
+    public static final String CLAIM_EXHAUSTED_ERROR = "CLAIM_EXHAUSTED: tries started but never finished";
+    /** Logged when the claim marks such a row FAILED: event id, event type, attempts. */
+    public static final String CLAIM_EXHAUSTED_LOG = "Outbox event {} ({}) was marked FAILED after {} attempts that did not "
+            + "finish (the relay stopped during the work); availability may be stale until cache TTL expiry";
+    /** Logged when the work transaction cannot re-lock its claimed row: event id, event type, claimed try. */
+    public static final String RELOCK_SKIPPED_LOG = "Outbox event {} ({}) skipped: another relay instance owns try {}";
 }

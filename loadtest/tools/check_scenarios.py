@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lt.fixtures import BASE, bind, load_suite, new_context, render, suite_names  # noqa: E402
+from lt.fixtures import BASE, bind, load_suite, new_context, new_wave, render, suite_names  # noqa: E402
 
 errors, ids, names, n = [], set(), set(), 0
 if sorted(p.stem for p in (BASE / "expected").glob("*.json")) != suite_names():
@@ -38,7 +38,7 @@ for name in suite_names():
         if case.get("expectedGoal") != case.get("goal"):
             errors.append(f"{cid}: goal differs between input and expected file")
         try:
-            ctx = bind(case, new_context("0123abcd", 0))
+            ctx = bind(case, new_wave(case, "0123abcd", 0)[0] if "wave" in case else new_context("0123abcd", 0))
             for step in case.get("steps") or [case]:
                 render(step["request"], ctx)
                 render(step["expect"], ctx)

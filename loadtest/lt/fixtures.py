@@ -6,6 +6,7 @@ Input and expected output live in two files per suite, joined by case id:
     expected/<suite>.json   what must come back: expect | steps[].expect, aggregate
                             steps[].expect.continueOn: statuses after which the case goes on
                             (any other allowed status passes, but ends the case)
+                            perWave: status count one wave must end with (wave cases)
 
 Pipeline per case execution:
     1. load_suite()  read input + expected, join by case id (and step id), fail on any gap
@@ -17,6 +18,7 @@ Tokens {{dotted.path}} resolve against a per-execution context:
     ref.*    data/seed-refs.json (named seed ids)
     <bind>.* values the case binds ("bind": {"v": "pool:standardCars"})
     <save>.* values a previous step saved from its response ("save": {"apptId": "id"})
+    v, start, wave.no   wave cases only: the car of this client and the slot of this wave
     run.*    run.id (unique per locust process) and run.user (unique per simulated user)
 """
 import json
@@ -59,8 +61,9 @@ def load_suite(name):
             case["expect"] = out["expect"]
         else:
             raise ValueError(f"{name}: {case['id']} has no 'expect'")
-        if "aggregate" in out:
-            case["aggregate"] = out["aggregate"]
+        for key in ("aggregate", "perWave"):
+            if key in out:
+                case[key] = out[key]
         case["expectedGoal"] = out.get("goal")
         case.setdefault("weight", 1)
         case["_suite"] = inp["suite"]
@@ -142,6 +145,28 @@ def bind_one(spec, ctx):
         start = _local(a["tz"], day, a["open"]) + timedelta(minutes=a["stepMinutes"] * random.randint(0, steps))
         return _iso(start)
     raise ValueError(f"unknown bind {spec!r}")
+
+
+def wave_start(slot, wave_no):
+    """Start of wave k: the slots of a day in order, then the next day. The step is at least
+    the service duration, so two waves of a case never overlap."""
+    open_min, last_min = (sum(int(x) * f for x, f in zip(t.split(":"), (60, 1))) for t in (slot["open"], slot["lastStart"]))
+    per_day = (last_min - open_min) // slot["stepMinutes"] + 1
+    first, last = slot["days"]
+    day = first + wave_no // per_day
+    if day > last:
+        raise ValueError(f"wave {wave_no} is past the case's last day {last}: widen 'days'")
+    return _iso(_local(slot["tz"], day, slot["open"]) + timedelta(minutes=slot["stepMinutes"] * (wave_no % per_day)))
+
+
+def new_wave(case, run_id, wave_no):
+    """One context per client of wave k: same {{start}}, a different car each ({{v}}),
+    or the same car for all with "sameVehicle". Then bind() adds the per-client values."""
+    w = case["wave"]
+    cars = [c for c in REFS["pools"]["standardCars"] if c["vehicleType"] == w["vehicleType"]]
+    picked = [random.choice(cars)] * w["clients"] if w.get("sameVehicle") else random.sample(cars, w["clients"])
+    start = wave_start(w["slot"], wave_no)
+    return [{**new_context(run_id, wave_no), "wave": {"no": wave_no}, "v": car, "start": start} for car in picked]
 
 
 def bind(case, ctx):
