@@ -6,12 +6,14 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 import com.keyloop.scheduler.api.config.appointment.BookingProperties;
 import com.keyloop.scheduler.api.constant.ErrorMessages;
@@ -29,13 +31,12 @@ import org.springframework.stereotype.Service;
 /**
  * {@link CandidateSelector} on PostgreSQL (candidate-selection.md, DLD §5, Spec04 §6).
  * Steps: fitting resources, free in the window, bays with fewer vehicle types first,
- * technicians with fewer jobs that local day first, then pairs (diagonal first).
+ * technicians with fewer jobs that local day first, then pairs (diagonal first). Ties are
+ * broken at random, so bookings racing for one slot spread over the free pairs instead
+ * of all trying the same {@code max-pairs} ones.
  */
 @Service
 public class CandidateSelectorImpl implements CandidateSelector {
-
-    /** Same order as PostgreSQL {@code ORDER BY id}: unsigned bytes, which is the hex text order. */
-    private static final Comparator<UUID> BY_ID = Comparator.comparing(UUID::toString);
 
     private final AvailabilityRepository availability;
     private final CandidateRepository candidates;
@@ -77,8 +78,8 @@ public class CandidateSelectorImpl implements CandidateSelector {
 
         // 3. Bays taking fewer vehicle types first: keep flexible bays for vehicles only they can take (D2)
         Map<UUID, Integer> types = candidates.countVehicleTypes(freeBays);
-        List<UUID> orderedBays = freeBays.stream()
-                .sorted(Comparator.<UUID>comparingInt(types::get).thenComparing(BY_ID))
+        List<UUID> orderedBays = shuffled(freeBays).stream()
+                .sorted(Comparator.comparingInt(types::get))
                 .toList();
 
         // 4. Technicians with fewer jobs that local day first: spread the work
@@ -86,11 +87,18 @@ public class CandidateSelectorImpl implements CandidateSelector {
         LocalDate day = start.atZone(zone).toLocalDate();
         Map<UUID, Integer> jobs = candidates.countAppointments(freeTechnicians,
                 day.atStartOfDay(zone).toInstant(), day.plusDays(1).atStartOfDay(zone).toInstant());
-        List<UUID> orderedTechnicians = freeTechnicians.stream()
-                .sorted(Comparator.<UUID>comparingInt(id -> jobs.getOrDefault(id, 0)).thenComparing(BY_ID))
+        List<UUID> orderedTechnicians = shuffled(freeTechnicians).stream()
+                .sorted(Comparator.comparingInt(id -> jobs.getOrDefault(id, 0)))
                 .toList();
 
         return CandidateResult.of(pairs(orderedBays, orderedTechnicians, properties.maxPairs()));
+    }
+
+    /** Random order; the stable sort that follows keeps it among equals (random tie-break). */
+    private static List<UUID> shuffled(List<UUID> ids) {
+        List<UUID> copy = new ArrayList<>(ids);
+        Collections.shuffle(copy, ThreadLocalRandom.current());
+        return copy;
     }
 
     /**

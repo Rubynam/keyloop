@@ -46,6 +46,8 @@ scheduler:
   booking:
     # Spec04 §6: (bay, technician) pairs tried, one transaction each, before 409
     max-pairs: 3
+    # Candidate reads per booking when every pair of a read was taken meanwhile (guard only)
+    max-candidate-reads: 10
 
 management:
   endpoints:

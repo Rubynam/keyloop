@@ -35,14 +35,14 @@
   summary: Add `constant/ping/PingConstants` and `resources/redis/release-lock.lua` to the CLAUDE.md §1 layout tree.
   evidence: Both were added by Spec05 PR2/PR5 but the tree written in PR5 omits them.
 - source_spec: `planing/Spec07.md`
-  summary: Pick pairs herd — every concurrent request for one slot gets the same 3 pairs (deterministic, AC13), so some answer 409 while other pairs are still free. Candidate fix: rotate the pair list by `hash(idempotencyKey) % n` (same key → same order).
-  evidence: Raised on 2026-11-01 while reviewing Spec07 §7.1 / §13 "no lock on the candidate read". User deferred it: no load test numbers yet. Decide with Spec06 `race` / `stress` (rate of 409 while free pairs remain).
-- source_spec: `planing/Spec07.md`
   summary: `JdbcCandidateRepository.countAppointments` filters `technician_id IN (...) AND start_time` with no `dealership_id`, so `idx_appointments_dealer_start` is not used and it reads each technician's full history. Candidate fix: add `dealership_id = :dealershipId` or an index `(technician_id, start_time)`.
   evidence: Raised on 2026-11-01. User deferred it until there is data. Check with `EXPLAIN ANALYZE` on a seeded table with months of past appointments (needs seed data, not concurrent load).
 - source_spec: `planing/Spec07.md`
   summary: Connection pool pressure on booking spikes — 5–7 reads (D8) + up to 3 transactions per request may exhaust the Hikari pool → 503. Options: merge the candidate reads into one SQL (D8) or tune pool size.
-  evidence: Raised on 2026-11-01. User deferred it: no load test numbers yet. Decide with Spec06 `stress` (pool wait time, 503 rate, p95).
+  evidence: Raised on 2026-11-01. User deferred it: no load test numbers yet. Decide with Spec06 `stress` (pool wait time, 503 rate, p95). book-burst 2026-11-02 (150 req/s, same-slot waves): no 503 and no Hikari timeout, but both replicas used all 200 Tomcat threads on the default 10-connection pool; see the re-read item below.
 - source_spec: `_bmad-output/implementation-artifacts/spec-07-book-appointment.md`
   summary: Load-test case BK-01 expects a `traceId` field on the 409 ProblemDetail, but the API does not emit one, so BK-01 fails on every 409.
   evidence: Assertion `{"path": "traceId", "exists": true}` already in `loadtest/expected/30-booking.json:29` at baseline 251a8b0; adding `traceId` belongs to the tracing work (story-outbox-tracing / Spec06), not Spec07.
+- source_spec: `planing/Spec07.md`
+  summary: Booking re-read costs a full candidate read. When every pair of a read was taken, `AppointmentServiceImpl` calls `CandidateSelector.select` again (7 queries), but dealership, service duration, fitting bays and qualified technicians do not change between reads. Candidate fix: keep those 4 from the first read and on a re-read run only `findBookings` + the two counts.
+  evidence: Raised on 2026-11-02 after the under-fill fix (branch `claude/booking-lock-before-insert`). book-burst: candidate reads per booking 0.99 → 1.76, p95 69 → 380 ms (still under the 800 ms budget), postgres peak CPU 81 → 134 %. User deferred it: correctness first. Re-measure with `LOADTEST_PROFILE=book-burst loadtest/run-ramp.sh`.

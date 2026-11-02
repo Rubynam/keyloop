@@ -13,8 +13,8 @@ Used by `BookingService` (DLD §5) to pick which resources to try. Reads Postgre
    - Technicians: `active` technicians of the dealership with skill `serviceTypeId` (`technician_skills`) AND certified for `vehicleTypeId` (`technician_vehicle_types`).
    - Either list empty → return **`NOT_SERVICEABLE`** (booking answers `422`).
 2. **Free resources.** Drop every fitting bay / technician that has a non-`CANCELLED` appointment overlapping the window (`existing.start < end AND start < existing.end`). Either list empty → return **`NONE_FREE`** (booking answers `409`).
-3. **Order bays:** number of vehicle types the bay takes ASC, then `id` ASC (D2 — keep flexible bays for vehicles only they can take).
-4. **Order technicians:** number of non-`CANCELLED` appointments on the window's local date (dealership zone) ASC, then `id` ASC (spread work).
+3. **Order bays:** number of vehicle types the bay takes ASC, ties in random order (D2 — keep flexible bays for vehicles only they can take).
+4. **Order technicians:** number of non-`CANCELLED` appointments on the window's local date (dealership zone) ASC, ties in random order (spread work; parallel bookings of one slot spread over the free pairs, book-burst run 2026-11-01).
 5. **Build at most 3 pairs** (Spec04 §6, `N = 3`):
    1. Diagonal first: `(bay[i], tech[i])` for `i = 0 … min(#bays, #techs, 3) − 1` — every pair differs in both bay and technician, so one conflicting resource fails one try, not all three.
    2. If fewer than 3 pairs and unused combinations remain, fill from the cross product in order `(bay index, tech index)` ascending, skipping pairs already taken, until 3.
