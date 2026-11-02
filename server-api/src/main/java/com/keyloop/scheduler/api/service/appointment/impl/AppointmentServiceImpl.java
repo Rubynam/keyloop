@@ -33,6 +33,7 @@ import com.keyloop.scheduler.api.exception.appointment.SlotTakenException;
 import com.keyloop.scheduler.api.exception.appointment.VehicleBusyException;
 import com.keyloop.scheduler.api.exception.appointment.VehicleOwnerMismatchException;
 import com.keyloop.scheduler.api.model.appointment.AppointmentBookedPayload;
+import com.keyloop.scheduler.api.model.appointment.AppointmentNames;
 import com.keyloop.scheduler.api.model.appointment.CandidateResult;
 import com.keyloop.scheduler.api.model.appointment.CandidateResult.Pair;
 import com.keyloop.scheduler.api.model.appointment.NewAppointment;
@@ -117,7 +118,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Override
     public AppointmentResponse get(UUID appointmentId) {
         return appointments.findById(appointmentId)
-                .map(AppointmentServiceImpl::response)
+                .map(this::response)
                 .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_APPOINTMENT, appointmentId));
     }
 
@@ -125,8 +126,9 @@ public class AppointmentServiceImpl implements AppointmentService {
         // 1. Ids exist
         Dealership dealership = availability.findDealership(request.dealershipId())
                 .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_DEALERSHIP, request.dealershipId()));
-        int duration = availability.findServiceDurationMinutes(request.serviceTypeId())
-                .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_SERVICE_TYPE, request.serviceTypeId()));
+        int duration = availability.findServiceType(request.serviceTypeId())
+                .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_SERVICE_TYPE, request.serviceTypeId()))
+                .durationMinutes();
         VehicleRef vehicle = appointments.findVehicle(request.vehicleId())
                 .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_VEHICLE, request.vehicleId()));
         if (!appointments.customerExists(request.customerId())) {
@@ -231,7 +233,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     /** D3: same 5 request fields → the stored appointment again; anything else → 422. */
-    private static BookingResult replay(StoredAppointment stored, BookAppointmentRequest request) {
+    private BookingResult replay(StoredAppointment stored, BookAppointmentRequest request) {
         boolean same = stored.customerId().equals(request.customerId())
                 && stored.vehicleId().equals(request.vehicleId())
                 && stored.dealershipId().equals(request.dealershipId())
@@ -243,9 +245,16 @@ public class AppointmentServiceImpl implements AppointmentService {
         return new BookingResult(response(stored), true);
     }
 
-    private static AppointmentResponse response(StoredAppointment a) {
-        return new AppointmentResponse(a.id(), a.status(), a.dealershipId(), a.serviceBayId(), a.technicianId(),
-                a.serviceTypeId(), a.vehicleId(), a.start(), a.end());
+    /** Row plus display names; read after commit, so it never lengthens the booking transaction. */
+    private AppointmentResponse response(StoredAppointment a) {
+        AppointmentNames names = appointments.findNames(a);
+        return new AppointmentResponse(a.id(), a.status(),
+                a.dealershipId(), names.dealershipName(),
+                a.serviceBayId(), names.serviceBayName(),
+                a.technicianId(), names.technicianName(),
+                a.serviceTypeId(), names.serviceTypeName(),
+                a.vehicleId(), names.vehicleName(),
+                a.start(), a.end());
     }
 
     /** One line per try: pair and outcome, never customer data (Spec07 §7.2). */

@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
+import com.keyloop.scheduler.api.model.availability.ServiceType;
 
 /**
  * Read-only data access for the availability query and candidate selection. It gives
@@ -15,7 +16,9 @@ import com.keyloop.scheduler.api.model.availability.Dealership;
  * free slots. It never writes. spec-read-availability, DLD §8.
  *
  * <pre>
- * findDealership(D1)                        → Dealership("UTC", 480, 1020)
+ * findDealership(D1)                        → Dealership("Hub", "UTC", 480, 1020)
+ * findServiceType(OIL)                      → ServiceType("Oil change", 60)
+ * findVehicleTypeName(SUV)                  → "SUV"
  * findFittingBayIds(D1, SUV)                → [B1, B2]
  * findQualifiedTechnicianIds(D1, OIL, SUV)  → [T1]
  * findBookings(D1, [B1,B2], [T1], 09:00, 17:00)
@@ -25,32 +28,33 @@ import com.keyloop.scheduler.api.model.availability.Dealership;
 public interface AvailabilityRepository {
 
     /**
-     * Business hours and zone of one dealership. Seconds round inwards (open up, close
+     * Name, business hours and zone of one dealership. Seconds round inwards (open up, close
      * down), so a slot never starts before open or ends after close.
      *
      * <pre>
-     * open 08:00:30, close 17:00 → Dealership(tz, 481, 1020);  close '24:00' → 1440
+     * open 08:00:30, close 17:00 → Dealership(name, tz, 481, 1020);  close '24:00' → 1440
      * </pre>
      */
     Optional<Dealership> findDealership(UUID id);
 
     /**
-     * Length of one service type in minutes; empty when the id is unknown.
+     * Name and length (minutes) of one service type; empty when the id is unknown.
      *
      * <pre>
-     * OIL_CHANGE → Optional[60];  unknown → Optional.empty
+     * OIL_CHANGE → Optional[ServiceType("Oil change", 60)];  unknown → Optional.empty
      * </pre>
      */
-    Optional<Integer> findServiceDurationMinutes(UUID serviceTypeId);
+    Optional<ServiceType> findServiceType(UUID serviceTypeId);
 
     /**
-     * Whether the vehicle type exists, so the service can answer 404.
+     * Display name of the vehicle type; empty when the id is unknown, so the service
+     * can answer 404.
      *
      * <pre>
-     * SUV → true;  unknown → false
+     * SUV → Optional["SUV"];  unknown → Optional.empty
      * </pre>
      */
-    boolean vehicleTypeExists(UUID vehicleTypeId);
+    Optional<String> findVehicleTypeName(UUID vehicleTypeId);
 
     /**
      * Active bays of the dealership that take the vehicle type.

@@ -7,12 +7,22 @@ import java.util.UUID;
 
 /**
  * Body of {@code GET /api/v1/availability}. Every date in {@code [from, to]} is listed,
- * even without slots. Bay and technician ids are deliberately not exposed.
+ * even without slots. Bay and technician ids are deliberately not exposed. Each id comes
+ * with its display name, so a client can show it without a second call.
+ *
+ * <pre>
+ * { "dealershipId": D1, "dealershipName": "Keyloop Hub",
+ *   "serviceTypeId": S1, "serviceTypeName": "Oil change",
+ *   "vehicleTypeId": V1, "vehicleTypeName": "SUV", "timezone": "UTC", ... }
+ * </pre>
  */
 public record AvailabilityResponse(
         UUID dealershipId,
+        String dealershipName,
         UUID serviceTypeId,
+        String serviceTypeName,
         UUID vehicleTypeId,
+        String vehicleTypeName,
         String timezone,
         int durationMinutes,
         List<Day> days) {

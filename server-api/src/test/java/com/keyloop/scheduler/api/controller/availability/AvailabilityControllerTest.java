@@ -61,7 +61,7 @@ class AvailabilityControllerTest {
     @Test
     void returnsDaysWithOffsetSlots() throws Exception {
         when(service.find(DEALER, SERVICE, VEHICLE, FROM, TO)).thenReturn(new AvailabilityResponse(
-                DEALER, SERVICE, VEHICLE, "America/New_York", 60, List.of(
+                DEALER, "Hub", SERVICE, "Oil change", VEHICLE, "SUV", "America/New_York", 60, List.of(
                         new Day(FROM, List.of(new Slot(OffsetDateTime.parse("2026-10-31T07:00-04:00"),
                                 OffsetDateTime.parse("2026-10-31T08:00-04:00")))),
                         new Day(TO, List.of()))));
@@ -71,6 +71,9 @@ class AvailabilityControllerTest {
                 .andExpect(jsonPath("$.dealershipId").value(DEALER.toString()))
                 .andExpect(jsonPath("$.serviceTypeId").value(SERVICE.toString()))
                 .andExpect(jsonPath("$.vehicleTypeId").value(VEHICLE.toString()))
+                .andExpect(jsonPath("$.dealershipName").value("Hub"))
+                .andExpect(jsonPath("$.serviceTypeName").value("Oil change"))
+                .andExpect(jsonPath("$.vehicleTypeName").value("SUV"))
                 .andExpect(jsonPath("$.timezone").value("America/New_York"))
                 .andExpect(jsonPath("$.durationMinutes").value(60))
                 .andExpect(jsonPath("$.days.length()").value(2))
