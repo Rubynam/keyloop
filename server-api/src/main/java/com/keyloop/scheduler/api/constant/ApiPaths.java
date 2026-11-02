@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
  * API_V1 + APPOINTMENTS  →  /api/v1/appointments
  * API_V1 + APPOINTMENTS + APPOINTMENT_ID  →  /api/v1/appointments/{appointmentId}
  * API_V1 + PING          →  /api/v1/ping
+ * API_V1 + LOOKUPS + AVAILABILITY  →  /api/v1/lookups/availability
  * </pre>
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
@@ -22,4 +23,5 @@ public final class ApiPaths {
     public static final String APPOINTMENTS = "/appointments";
     public static final String APPOINTMENT_ID = "/{appointmentId}";
     public static final String PING = "/ping";
+    public static final String LOOKUPS = "/lookups";
 }

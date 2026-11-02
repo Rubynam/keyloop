@@ -18,6 +18,7 @@ import com.keyloop.scheduler.api.exception.appointment.OutsideBusinessHoursExcep
 import com.keyloop.scheduler.api.exception.appointment.VehicleBusyException;
 import com.keyloop.scheduler.api.exception.appointment.VehicleOwnerMismatchException;
 import com.keyloop.scheduler.api.exception.availability.InvalidRangeException;
+import com.keyloop.scheduler.api.exception.lookup.InvalidWindowException;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,8 +79,8 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return withTraceId(problem(HttpStatus.NOT_FOUND, e.getMessage()));
     }
 
-    @ExceptionHandler(InvalidRangeException.class)
-    ProblemDetail invalidRange(InvalidRangeException e) {
+    @ExceptionHandler({InvalidRangeException.class, InvalidWindowException.class})
+    ProblemDetail invalidRange(RuntimeException e) {
         return withTraceId(problem(HttpStatus.BAD_REQUEST, e.getMessage()));
     }
 
