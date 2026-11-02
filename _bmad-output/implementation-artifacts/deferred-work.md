@@ -67,3 +67,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-outbox-relay-claim-relock.md`
   summary: `batch-size: 0` (or negative) makes `OutboxRelay.relay()` spin forever (`tick() == 0 == batchSize`); fixed by the deferred Task 3 `@Positive` validation.
   evidence: Review pass 1 (E3); pre-existing loop condition, same at baseline.
+- source_spec: `_bmad-output/implementation-artifacts/spec-outbox-relay-properties-validation.md`
+  summary: A missing `scheduler.outbox.relay.max-retries` binds to 0 (primitive `int`) and passes `@PositiveOrZero`, so retries turn off silently — use `Integer` + `@NotNull` or an explicit default.
+  evidence: Review pass 1 (B1); record constructor binding defaults missing primitives to 0, same before Task 3. Shipped application.yml sets the value.
+- source_spec: `_bmad-output/implementation-artifacts/spec-outbox-relay-properties-validation.md`
+  summary: Validate `OutboxCleanupProperties` (`@NotBlank` cron, `@DurationMin` on the three retentions) — a 0 `failed-retention` would delete FAILED rows at once.
+  evidence: Review pass 1 (B2); pre-existing, excluded from Task 3 by its intent (Never section).
+- source_spec: `_bmad-output/implementation-artifacts/spec-outbox-relay-properties-validation.md`
+  summary: Add upper bounds to relay settings (`@Max` on max-retries/batch-size, `@DurationMax` on durations) — `max-retries=Integer.MAX_VALUE` overflows `maxRetries() + 1` in `OutboxRelayServiceImpl` and fails every row; huge durations overflow `toMillis()`.
+  evidence: Review pass 1 (B3/E1/E2); needs absurd values, overflow pre-dates Task 3. Pick limits with ops (e.g. version-key-ttl vs cache TTL).

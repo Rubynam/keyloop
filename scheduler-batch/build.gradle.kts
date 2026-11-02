@@ -8,6 +8,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-batch-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    // JSR-380 checks on @ConfigurationProperties: bad relay settings stop the app at startup
+    implementation("org.springframework.boot:spring-boot-starter-validation")
     // Only to serve actuator over HTTP on 8081 — no business controllers here
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation(libs.shedlock.spring)
