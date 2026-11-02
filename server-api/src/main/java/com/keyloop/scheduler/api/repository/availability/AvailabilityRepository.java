@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
+import com.keyloop.scheduler.api.model.availability.ServiceBay;
 import com.keyloop.scheduler.api.model.availability.ServiceType;
 
 /**
@@ -19,6 +20,7 @@ import com.keyloop.scheduler.api.model.availability.ServiceType;
  * findDealership(D1)                        → Dealership("Hub", "UTC", 480, 1020)
  * findServiceType(OIL)                      → ServiceType("Oil change", 60)
  * findVehicleTypeName(SUV)                  → "SUV"
+ * findServiceBay(D1, B1, SUV)               → ServiceBay("Bay 1", true, true)
  * findFittingBayIds(D1, SUV)                → [B1, B2]
  * findQualifiedTechnicianIds(D1, OIL, SUV)  → [T1]
  * findBookings(D1, [B1,B2], [T1], 09:00, 17:00)
@@ -55,6 +57,19 @@ public interface AvailabilityRepository {
      * </pre>
      */
     Optional<String> findVehicleTypeName(UUID vehicleTypeId);
+
+    /**
+     * One bay of the dealership, with its name and whether it fits the vehicle type.
+     * Empty when the bay is unknown or belongs to another dealership, so the service
+     * can answer 404.
+     *
+     * <pre>
+     * (D1, B1, SUV) → Optional[ServiceBay("Bay 1", true, true)]
+     * (D1, B4, SUV) → Optional[ServiceBay("Car bay", true, false)]   car-only bay
+     * (D1, B9, SUV) → Optional.empty                                  bay of D2
+     * </pre>
+     */
+    Optional<ServiceBay> findServiceBay(UUID dealershipId, UUID serviceBayId, UUID vehicleTypeId);
 
     /**
      * Active bays of the dealership that take the vehicle type.

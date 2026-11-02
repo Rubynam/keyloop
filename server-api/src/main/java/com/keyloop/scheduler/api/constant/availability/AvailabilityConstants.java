@@ -38,7 +38,7 @@ public final class AvailabilityConstants {
 
     /** Version of one dealership day, bumped by the relay. */
     public static final String VERSION_KEY_PREFIX = "avail:ver:";
-    /** Full-day slot list of one (dealership, date, version, service type, vehicle type). */
+    /** Full-day slot list of one (dealership, date, version, bay, service type, vehicle type). */
     public static final String SLOTS_KEY_PREFIX = "avail:";
     /** Rebuild lock of one slot-list key. */
     public static final String LOCK_KEY_PREFIX = "avail:lock:";

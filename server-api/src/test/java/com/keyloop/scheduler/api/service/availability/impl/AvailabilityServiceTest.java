@@ -20,9 +20,11 @@ import java.util.UUID;
 
 import com.keyloop.scheduler.api.config.availability.AvailabilityProperties;
 import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse;
+import com.keyloop.scheduler.api.exception.NotFoundException;
 import com.keyloop.scheduler.api.exception.availability.InvalidRangeException;
 import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
+import com.keyloop.scheduler.api.model.availability.ServiceBay;
 import com.keyloop.scheduler.api.model.availability.ServiceType;
 import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
 import com.keyloop.scheduler.api.support.PassThroughAvailabilityCache;
@@ -54,10 +56,10 @@ class AvailabilityServiceTest {
         when(repository.findDealership(DEALER)).thenReturn(Optional.of(new Dealership("Hub", "UTC", 8 * 60, 17 * 60)));
         when(repository.findServiceType(SERVICE)).thenReturn(Optional.of(new ServiceType("Oil change", 60)));
         when(repository.findVehicleTypeName(VEHICLE)).thenReturn(Optional.of("SUV"));
+        when(repository.findServiceBay(DEALER, BAY_A, VEHICLE)).thenReturn(Optional.of(new ServiceBay("Bay A", true, true)));
     }
 
-    private void resources(List<UUID> bays, List<UUID> technicians, Booking... bookings) {
-        when(repository.findFittingBayIds(DEALER, VEHICLE)).thenReturn(bays);
+    private void resources(List<UUID> technicians, Booking... bookings) {
         when(repository.findQualifiedTechnicianIds(DEALER, SERVICE, VEHICLE)).thenReturn(technicians);
         when(repository.findBookings(any(), any(), any(), any(), any())).thenReturn(List.of(bookings));
     }
@@ -66,44 +68,86 @@ class AvailabilityServiceTest {
         return new Booking(bay, tech, Instant.parse(DAY + "T" + from + ":00Z"), Instant.parse(DAY + "T" + to + ":00Z"));
     }
 
+    private AvailabilityResponse find(Clock clock) {
+        return new AvailabilityServiceImpl(repository, new PassThroughAvailabilityCache(), clock, STEP_15)
+                .find(DEALER, BAY_A, SERVICE, VEHICLE, DAY, DAY);
+    }
+
     private List<String> starts(Clock clock) {
-        AvailabilityResponse response = new AvailabilityServiceImpl(repository, new PassThroughAvailabilityCache(), clock, STEP_15).find(DEALER, SERVICE, VEHICLE, DAY, DAY);
+        AvailabilityResponse response = find(clock);
         return response.days().getFirst().slots().stream().map(s -> s.start().toLocalTime().toString()).toList();
     }
 
     @Test
-    void bookingBlocksOnlyItsOwnBayAndTechnician() {
-        resources(List.of(BAY_A, BAY_B), List.of(TECH_T, TECH_U), booking(BAY_A, TECH_T, "09:00", "10:00"));
+    void bookingOnTheAskedBayBlocksItEvenWithAFreeTechnician() {
+        resources(List.of(TECH_T, TECH_U), booking(BAY_A, TECH_T, "09:00", "10:00"));
 
-        // Bay B + tech U are still free
+        // Tech U is free, but bay A is not
+        assertThat(starts(LONG_AGO)).contains("08:00", "10:00").doesNotContain("08:15", "09:00", "09:45");
+    }
+
+    @Test
+    void bookingOnAnotherBayLeavesTheAskedBayFree() {
+        resources(List.of(TECH_T, TECH_U), booking(BAY_B, TECH_T, "09:00", "10:00"));
+
+        // Bay A + tech U are still free
         assertThat(starts(LONG_AGO)).contains("09:00", "09:15");
     }
 
     @Test
-    void bookedTechnicianBlocksWhenItIsTheOnlyOne() {
-        resources(List.of(BAY_A, BAY_B), List.of(TECH_T), booking(BAY_A, TECH_T, "09:00", "10:00"));
+    void onlyTechnicianBusyOnAnotherBayBlocksTheAskedBay() {
+        resources(List.of(TECH_T), booking(BAY_B, TECH_T, "09:00", "10:00"));
 
         assertThat(starts(LONG_AGO)).contains("08:00", "10:00").doesNotContain("08:15", "09:00", "09:45");
     }
 
     @Test
-    void bookingWithANonFittingTechnicianStillBlocksTheFittingBay() {
-        resources(List.of(BAY_A), List.of(TECH_T, TECH_U), booking(BAY_A, OTHER_TECH, "09:00", "10:00"));
+    void bookingWithANonFittingTechnicianStillBlocksTheAskedBay() {
+        resources(List.of(TECH_T, TECH_U), booking(BAY_A, OTHER_TECH, "09:00", "10:00"));
 
         assertThat(starts(LONG_AGO)).contains("08:00", "10:00").doesNotContain("08:15", "09:00", "09:45");
     }
 
     @Test
-    void noFittingBaySkipsTheBookingQuery() {
-        resources(List.of(), List.of(TECH_T));
+    void bayThatDoesNotTakeTheVehicleTypeGivesNoSlotsAndSkipsTheBookingQuery() {
+        when(repository.findServiceBay(DEALER, BAY_A, VEHICLE)).thenReturn(Optional.of(new ServiceBay("Car bay", true, false)));
+        resources(List.of(TECH_T));
 
         assertThat(starts(LONG_AGO)).isEmpty();
         verify(repository, never()).findBookings(any(), any(), any(), any(), any());
     }
 
     @Test
+    void inactiveBayGivesNoSlots() {
+        when(repository.findServiceBay(DEALER, BAY_A, VEHICLE)).thenReturn(Optional.of(new ServiceBay("Old bay", false, true)));
+        resources(List.of(TECH_T));
+
+        assertThat(starts(LONG_AGO)).isEmpty();
+    }
+
+    @Test
+    void unknownOrForeignBayIsNotFound() {
+        when(repository.findServiceBay(DEALER, BAY_A, VEHICLE)).thenReturn(Optional.empty());
+        resources(List.of(TECH_T));
+
+        assertThatThrownBy(() -> find(LONG_AGO))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("Service bay").hasMessageContaining(BAY_A.toString());
+    }
+
+    @Test
+    void responseNamesTheAskedBay() {
+        resources(List.of(TECH_T));
+
+        AvailabilityResponse response = find(LONG_AGO);
+
+        assertThat(response.serviceBayId()).isEqualTo(BAY_A);
+        assertThat(response.serviceBayName()).isEqualTo("Bay A");
+    }
+
+    @Test
     void noQualifiedTechnicianSkipsTheBookingQuery() {
-        resources(List.of(BAY_A), List.of());
+        resources(List.of());
 
         assertThat(starts(LONG_AGO)).isEmpty();
         verify(repository, never()).findBookings(any(), any(), any(), any(), any());
@@ -111,7 +155,7 @@ class AvailabilityServiceTest {
 
     @Test
     void slotsBeforeTheClockAreDropped() {
-        resources(List.of(BAY_A), List.of(TECH_T));
+        resources(List.of(TECH_T));
         Clock now = Clock.fixed(Instant.parse(DAY + "T10:05:00Z"), ZoneOffset.UTC);
 
         assertThat(starts(now).getFirst()).isEqualTo("10:15");
@@ -119,7 +163,7 @@ class AvailabilityServiceTest {
 
     @Test
     void bookingsAreLoadedForTheLocalSpanOfTheRange() {
-        resources(List.of(BAY_A), List.of(TECH_T));
+        resources(List.of(TECH_T));
 
         starts(LONG_AGO);
 
@@ -148,7 +192,7 @@ class AvailabilityServiceTest {
     @Test
     void extremeDatesAreRejectedAsBadRange() {
         assertThatThrownBy(() -> new AvailabilityServiceImpl(repository, new PassThroughAvailabilityCache(), LONG_AGO, STEP_15)
-                .find(DEALER, SERVICE, VEHICLE, LocalDate.MAX, LocalDate.MAX))
+                .find(DEALER, BAY_A, SERVICE, VEHICLE, LocalDate.MAX, LocalDate.MAX))
                 .isInstanceOf(InvalidRangeException.class);
         assertThatThrownBy(() -> AvailabilityServiceImpl.validateRange(LocalDate.MIN, LocalDate.MIN))
                 .isInstanceOf(InvalidRangeException.class);

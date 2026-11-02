@@ -114,7 +114,6 @@ class AvailabilityCacheIT extends IntegrationTest {
 
         assertThat(second).isEqualTo(first);
         assertThat(starts(second)).contains("09:00");
-        verify(repository, never()).findFittingBayIds(any(), any());
         verify(repository, never()).findQualifiedTechnicianIds(any(), any(), any());
         verify(repository, never()).findBookings(any(), any(), any(), any(), any());
     }
@@ -123,7 +122,7 @@ class AvailabilityCacheIT extends IntegrationTest {
     void cachedValueIsTheFullDayWithTtlPlusPadding() throws Exception {
         get();
 
-        String key = RedisAvailabilityCache.slotsKey(dealer, DAY, 0, service, vehicleType);
+        String key = RedisAvailabilityCache.slotsKey(dealer, DAY, 0, bay, service, vehicleType);
         JsonNode cached = json.readTree(redis.opsForValue().get(key));
         assertThat(cached).hasSize(33);
         assertThat(cached.get(0).get("start").asString()).isEqualTo("2030-01-07T08:00:00Z");
@@ -140,7 +139,32 @@ class AvailabilityCacheIT extends IntegrationTest {
         redis.opsForValue().increment(RedisAvailabilityCache.versionKey(dealer, DAY));
 
         assertThat(starts(get())).contains("08:00", "10:00").doesNotContain("08:15", "09:00", "09:45");
-        assertThat(redis.hasKey(RedisAvailabilityCache.slotsKey(dealer, DAY, 1, service, vehicleType))).isTrue();
+        assertThat(redis.hasKey(RedisAvailabilityCache.slotsKey(dealer, DAY, 1, bay, service, vehicleType))).isTrue();
+    }
+
+    @Test
+    void eachBayHasItsOwnSlotKey() throws Exception {
+        UUID otherBay = fixtures.bay(dealer, vehicleType);
+
+        get();
+        get(otherBay);
+
+        assertThat(redis.hasKey(RedisAvailabilityCache.slotsKey(dealer, DAY, 0, bay, service, vehicleType))).isTrue();
+        assertThat(redis.hasKey(RedisAvailabilityCache.slotsKey(dealer, DAY, 0, otherBay, service, vehicleType))).isTrue();
+    }
+
+    @Test
+    void bumpAfterABookingOnAnotherBayHidesTheSharedTechniciansSlot() throws Exception {
+        // tech is the only qualified technician, so a job on the other bay blocks this bay too
+        UUID otherBay = fixtures.bay(dealer, vehicleType);
+        assertThat(starts(get())).contains("09:00");
+        fixtures.appointment(dealer, service, vehicleType, otherBay, tech,
+                OffsetDateTime.parse(DAY + "T09:00:00Z"), OffsetDateTime.parse(DAY + "T10:00:00Z"), "CONFIRMED");
+
+        // One version per dealership day covers every bay
+        redis.opsForValue().increment(RedisAvailabilityCache.versionKey(dealer, DAY));
+
+        assertThat(starts(get())).contains("08:00", "10:00").doesNotContain("08:15", "09:00", "09:45");
     }
 
     @Test
@@ -164,12 +188,12 @@ class AvailabilityCacheIT extends IntegrationTest {
             assertThat(bodies).hasSize(users).allSatisfy(body -> assertThat(body).isEqualTo(bodies.getFirst()));
             assertThat(starts(bodies.getFirst())).hasSize(33);
         }
-        verify(repository, times(1)).findFittingBayIds(dealer, vehicleType);
+        verify(repository, times(1)).findQualifiedTechnicianIds(dealer, service, vehicleType);
     }
 
     @Test
     void waiterThatTimesOutComputesWithoutWritingTheCache() throws Exception {
-        String lock = RedisAvailabilityCache.lockKey(dealer, DAY, 0, service, vehicleType);
+        String lock = RedisAvailabilityCache.lockKey(dealer, DAY, 0, bay, service, vehicleType);
         redis.opsForValue().set(lock, "another-request", Duration.ofSeconds(30));
 
         long began = System.nanoTime();
@@ -177,15 +201,15 @@ class AvailabilityCacheIT extends IntegrationTest {
 
         assertThat(Duration.ofNanos(System.nanoTime() - began)).isGreaterThanOrEqualTo(Duration.ofSeconds(2));
         assertThat(starts(body)).hasSize(33);
-        verify(repository, times(1)).findFittingBayIds(dealer, vehicleType);
-        assertThat(redis.hasKey(RedisAvailabilityCache.slotsKey(dealer, DAY, 0, service, vehicleType))).isFalse();
+        verify(repository, times(1)).findQualifiedTechnicianIds(dealer, service, vehicleType);
+        assertThat(redis.hasKey(RedisAvailabilityCache.slotsKey(dealer, DAY, 0, bay, service, vehicleType))).isFalse();
         // Never released by a request that does not own it
         assertThat(redis.opsForValue().get(lock)).isEqualTo("another-request");
     }
 
     @Test
     void lockOfAnOldVersionDoesNotBlockTheNewOne() throws Exception {
-        redis.opsForValue().set(RedisAvailabilityCache.lockKey(dealer, DAY, 0, service, vehicleType), "slow-v0-rebuild",
+        redis.opsForValue().set(RedisAvailabilityCache.lockKey(dealer, DAY, 0, bay, service, vehicleType), "slow-v0-rebuild",
                 Duration.ofSeconds(30));
         redis.opsForValue().increment(RedisAvailabilityCache.versionKey(dealer, DAY));
 
@@ -193,13 +217,13 @@ class AvailabilityCacheIT extends IntegrationTest {
         get();
 
         assertThat(Duration.ofNanos(System.nanoTime() - began)).isLessThan(Duration.ofSeconds(2));
-        assertThat(redis.hasKey(RedisAvailabilityCache.slotsKey(dealer, DAY, 1, service, vehicleType))).isTrue();
-        assertThat(redis.hasKey(RedisAvailabilityCache.lockKey(dealer, DAY, 1, service, vehicleType))).isFalse();
+        assertThat(redis.hasKey(RedisAvailabilityCache.slotsKey(dealer, DAY, 1, bay, service, vehicleType))).isTrue();
+        assertThat(redis.hasKey(RedisAvailabilityCache.lockKey(dealer, DAY, 1, bay, service, vehicleType))).isFalse();
     }
 
     @Test
     void luaReleaseDeletesOnlyTheOwnersLock() {
-        String lock = RedisAvailabilityCache.lockKey(dealer, DAY, 0, service, vehicleType);
+        String lock = RedisAvailabilityCache.lockKey(dealer, DAY, 0, bay, service, vehicleType);
         redis.opsForValue().set(lock, "b7", Duration.ofSeconds(30));
 
         // A's lock expired and B took it: A's release must leave B's lock alone
@@ -219,7 +243,7 @@ class AvailabilityCacheIT extends IntegrationTest {
         clock.set(Instant.parse(DAY + "T10:05:00Z"));
         List<String> starts = starts(get());
 
-        verify(repository, never()).findFittingBayIds(any(), any());
+        verify(repository, never()).findQualifiedTechnicianIds(any(), any(), any());
         assertThat(starts.getFirst()).isEqualTo("10:15");
         assertThat(starts).doesNotContain("08:00", "10:00");
     }
@@ -231,8 +255,12 @@ class AvailabilityCacheIT extends IntegrationTest {
     }
 
     private String get() throws Exception {
+        return get(bay);
+    }
+
+    private String get(UUID serviceBay) throws Exception {
         URI uri = URI.create("http://localhost:" + port + "/api/v1/availability?dealershipId=" + dealer
-                + "&serviceTypeId=" + service + "&vehicleTypeId=" + vehicleType + "&from=" + DAY + "&to=" + DAY);
+                + "&serviceBayId=" + serviceBay + "&serviceTypeId=" + service + "&vehicleTypeId=" + vehicleType + "&from=" + DAY + "&to=" + DAY);
         HttpResponse<String> response = http.send(HttpRequest.newBuilder(uri).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).as(response.body()).isEqualTo(200);

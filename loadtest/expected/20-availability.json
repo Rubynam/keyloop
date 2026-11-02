@@ -24,7 +24,7 @@
     },
     {
       "id": "AV-02",
-      "goal": "COLD read: a random date 1–60 days ahead (brake service, diesel car) at the hub → mostly cache misses, computed from PostgreSQL. Tests the miss path and stampede protection, budget 'GET /availability [cold]'.",
+      "goal": "COLD read: a random date 1–60 days ahead and a random diesel bay (brake service, diesel car) at the hub → mostly cache misses, computed from PostgreSQL. Tests the miss path and stampede protection, budget 'GET /availability [cold]'.",
       "expect": {"status": 200, "body": [{"path": "slots", "type": "array"}]}
     },
     {
@@ -58,8 +58,8 @@
     },
     {
       "id": "AV-06",
-      "goal": "Never bookable → empty list: a dealership with technicians but NO bays (needs both resources at once).",
-      "expect": {"status": 200, "body": [{"path": "slots", "maxItems": 0}]}
+      "goal": "A dealership with technicians but NO bays has no bay a client can pick: a bay of another dealership (the hub) → 404, never slots.",
+      "expect": {"status": 404, "body": [{"path": "status", "equals": 404}, {"path": "detail", "matches": "^Service bay .+ not found$"}]}
     },
     {
       "id": "AV-07",
@@ -85,6 +85,21 @@
       "id": "AV-10",
       "goal": "Unknown dealership (valid UUID, no row) → 404, and it is not cached as an empty slot list.",
       "expect": {"status": 404, "body": [{"path": "status", "equals": 404}]}
+    },
+    {
+      "id": "AV-11",
+      "goal": "Inactive bay (hub Bay 08) → 200 with an EMPTY list: the bay exists, so not a 404, but it takes no jobs.",
+      "expect": {"status": 200, "body": [{"path": "serviceBayName", "equals": "Bay 08"}, {"path": "slots", "maxItems": 0}]}
+    },
+    {
+      "id": "AV-12",
+      "goal": "A bay that does not take the vehicle type (hub EV Bay 01, gasoline car) → 200 with an EMPTY list.",
+      "expect": {"status": 200, "body": [{"path": "serviceBayName", "equals": "EV Bay 01"}, {"path": "slots", "maxItems": 0}]}
+    },
+    {
+      "id": "AV-13",
+      "goal": "serviceBayId is required (the client picks the bay) → 400 naming the param.",
+      "expect": {"status": 400, "body": [{"path": "status", "equals": 400}, {"path": "detail", "matches": "serviceBayId"}]}
     }
   ]
 }

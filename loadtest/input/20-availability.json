@@ -20,6 +20,7 @@
         "name": "/api/v1/availability [hot]",
         "query": {
           "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceBayId": "{{ref.serviceBays.Q7_STANDARD}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
           "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
           "from": "{{from}}",
@@ -29,16 +30,17 @@
     },
     {
       "id": "AV-02",
-      "goal": "COLD read: a random date 1–60 days ahead (brake service, diesel car) at the hub → mostly cache misses, computed from PostgreSQL. Tests the miss path and stampede protection, budget 'GET /availability [cold]'.",
+      "goal": "COLD read: a random date 1–60 days ahead and a random diesel bay (brake service, diesel car) at the hub → mostly cache misses, computed from PostgreSQL. Tests the miss path and stampede protection, budget 'GET /availability [cold]'.",
       "verifies": ["D1 cache miss", "NFR-02"],
       "weight": 10,
-      "bind": {"day": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": [1, 60]}}},
+      "bind": {"day": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": [1, 60]}}, "bay": "pool:q7DieselBays"},
       "request": {
         "method": "GET",
         "path": "/api/v1/availability",
         "name": "/api/v1/availability [cold]",
         "query": {
           "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceBayId": "{{bay}}",
           "serviceTypeId": "{{ref.serviceTypes.BRAKE_SERVICE}}",
           "vehicleTypeId": "{{ref.vehicleTypes.DIESEL_CAR}}",
           "from": "{{day}}",
@@ -62,6 +64,7 @@
         "name": "/api/v1/availability [edge]",
         "query": {
           "dealershipId": "{{ref.dealerships.KIRITIMATI}}",
+          "serviceBayId": "{{ref.serviceBays.KIRITIMATI}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
           "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
           "from": "{{day}}",
@@ -85,6 +88,7 @@
         "name": "/api/v1/availability [edge]",
         "query": {
           "dealershipId": "{{ref.dealerships.EXPRESS_KIOSK}}",
+          "serviceBayId": "{{ref.serviceBays.EXPRESS_KIOSK}}",
           "serviceTypeId": "{{ref.serviceTypes.WHEEL_ALIGNMENT}}",
           "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
           "from": "{{day}}",
@@ -104,6 +108,7 @@
         "name": "/api/v1/availability [empty]",
         "query": {
           "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceBayId": "{{ref.serviceBays.Q7_STANDARD}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
           "vehicleTypeId": "{{ref.vehicleTypes.HYDROGEN_CAR}}",
           "from": "{{day}}",
@@ -113,15 +118,16 @@
     },
     {
       "id": "AV-06",
-      "goal": "Never bookable → empty list: a dealership with technicians but NO bays (needs both resources at once).",
-      "verifies": ["ROADMAP §1.3 two resources"],
+      "goal": "A dealership with technicians but NO bays has no bay a client can pick: a bay of another dealership (the hub) → 404, never slots.",
+      "verifies": ["ROADMAP §1.3 two resources", "CLAUDE.md §2 error statuses"],
       "bind": {"day": {"date": {"tz": "Asia/Tokyo", "days": 3}}},
       "request": {
         "method": "GET",
         "path": "/api/v1/availability",
-        "name": "/api/v1/availability [empty]",
+        "name": "/api/v1/availability [not-found]",
         "query": {
           "dealershipId": "{{ref.dealerships.STAFF_ONLY}}",
+          "serviceBayId": "{{ref.serviceBays.Q7_STANDARD}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
           "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
           "from": "{{day}}",
@@ -143,6 +149,7 @@
         "name": "/api/v1/availability [invalid]",
         "query": {
           "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceBayId": "{{ref.serviceBays.Q7_STANDARD}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
           "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
           "from": "{{from}}",
@@ -164,6 +171,7 @@
         "name": "/api/v1/availability [invalid]",
         "query": {
           "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceBayId": "{{ref.serviceBays.Q7_STANDARD}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
           "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
           "from": "{{from}}",
@@ -181,6 +189,7 @@
         "name": "/api/v1/availability [invalid]",
         "query": {
           "dealershipId": "not-a-uuid",
+          "serviceBayId": "{{ref.serviceBays.Q7_STANDARD}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
           "from": "2030-01-01",
           "to": "2030-01-02"
@@ -198,6 +207,65 @@
         "name": "/api/v1/availability [not-found]",
         "query": {
           "dealershipId": "00000000-0000-7000-8000-000000000000",
+          "serviceBayId": "{{ref.serviceBays.Q7_STANDARD}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{day}}",
+          "to": "{{day}}"
+        }
+      }
+    },
+    {
+      "id": "AV-11",
+      "goal": "Inactive bay (hub Bay 08) → 200 with an EMPTY list: the bay exists, so not a 404, but it takes no jobs.",
+      "verifies": ["Spec03 §6.5"],
+      "weight": 2,
+      "bind": {"day": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 3}}},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [empty]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceBayId": "{{ref.serviceBays.Q7_INACTIVE}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{day}}",
+          "to": "{{day}}"
+        }
+      }
+    },
+    {
+      "id": "AV-12",
+      "goal": "A bay that does not take the vehicle type (hub EV Bay 01, gasoline car) → 200 with an EMPTY list.",
+      "verifies": ["ROADMAP D2"],
+      "weight": 2,
+      "bind": {"day": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 3}}},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [empty]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceBayId": "{{ref.serviceBays.Q7_EV}}",
+          "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
+          "from": "{{day}}",
+          "to": "{{day}}"
+        }
+      }
+    },
+    {
+      "id": "AV-13",
+      "goal": "serviceBayId is required (the client picks the bay) → 400 naming the param.",
+      "verifies": ["DLD §11 validation"],
+      "bind": {"day": {"date": {"tz": "Asia/Ho_Chi_Minh", "days": 3}}},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/availability",
+        "name": "/api/v1/availability [invalid]",
+        "query": {
+          "dealershipId": "{{ref.dealerships.Q7}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
           "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
           "from": "{{day}}",

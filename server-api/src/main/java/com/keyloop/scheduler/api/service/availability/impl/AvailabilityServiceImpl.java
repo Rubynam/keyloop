@@ -25,6 +25,7 @@ import com.keyloop.scheduler.api.exception.availability.InvalidRangeException;
 import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
 import com.keyloop.scheduler.api.model.availability.Interval;
+import com.keyloop.scheduler.api.model.availability.ServiceBay;
 import com.keyloop.scheduler.api.model.availability.ServiceType;
 import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
 import com.keyloop.scheduler.api.service.availability.AvailabilityService;
@@ -32,7 +33,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * {@link AvailabilityService} over the versioned cache and PostgreSQL (spec-read-availability,
- * DLD §8). Each local date is read through the cache ({@link AvailabilityCache},
+ * DLD §8). Slots are for the one bay the client chose. Each local date is read through the cache ({@link AvailabilityCache},
  * spec-availability-ops); a miss computes the full day from PostgreSQL. Slots that already
  * started are dropped per request, after the cache.
  *
@@ -56,12 +57,12 @@ public class AvailabilityServiceImpl implements AvailabilityService {
     }
 
     @Override
-    public AvailabilityResponse find(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId,
+    public AvailabilityResponse find(UUID dealershipId, UUID serviceBayId, UUID serviceTypeId, UUID vehicleTypeId,
                                      LocalDate from, LocalDate to) {
         validateRange(from, to);
         List<LocalDate> dates = from.datesUntil(to.plusDays(1)).toList();
         // Versions first, before any PostgreSQL read (cache-read-path.md step 1)
-        AvailabilityCache.Lookup lookup = cache.lookup(dealershipId, serviceTypeId, vehicleTypeId, dates);
+        AvailabilityCache.Lookup lookup = cache.lookup(dealershipId, serviceBayId, serviceTypeId, vehicleTypeId, dates);
 
         Dealership dealership = repository.findDealership(dealershipId)
                 .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_DEALERSHIP, dealershipId));
@@ -69,29 +70,34 @@ public class AvailabilityServiceImpl implements AvailabilityService {
                 .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_SERVICE_TYPE, serviceTypeId));
         String vehicleTypeName = repository.findVehicleTypeName(vehicleTypeId)
                 .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_VEHICLE_TYPE, vehicleTypeId));
+        ServiceBay bay = repository.findServiceBay(dealershipId, serviceBayId, vehicleTypeId)
+                .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_SERVICE_BAY, serviceBayId));
         int duration = serviceType.durationMinutes();
         ZoneId zone = zoneOf(dealership);
 
         Map<LocalDate, List<Slot>> fullDays = lookup.slots(missing ->
-                computeFullDays(dealershipId, serviceTypeId, vehicleTypeId, dealership, zone, duration, missing));
+                computeFullDays(dealershipId, serviceBayId, bay, serviceTypeId, vehicleTypeId, dealership, zone,
+                        duration, missing));
 
         Instant now = clock.instant();
         List<AvailabilityResponse.Day> days = dates.stream()
                 .map(date -> new AvailabilityResponse.Day(date, SlotCalculator.notStartedBefore(fullDays.get(date), now)))
                 .toList();
-        return new AvailabilityResponse(dealershipId, dealership.name(), serviceTypeId, serviceType.name(),
-                vehicleTypeId, vehicleTypeName, dealership.timezone(), duration, days);
+        return new AvailabilityResponse(dealershipId, dealership.name(), serviceBayId, bay.name(),
+                serviceTypeId, serviceType.name(), vehicleTypeId, vehicleTypeName, dealership.timezone(), duration, days);
     }
 
     /** Full-day slot lists (no now-cut) for the given dates, from PostgreSQL. */
-    private Map<LocalDate, List<Slot>> computeFullDays(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId,
+    private Map<LocalDate, List<Slot>> computeFullDays(UUID dealershipId, UUID serviceBayId, ServiceBay serviceBay,
+                                                       UUID serviceTypeId, UUID vehicleTypeId,
                                                        Dealership dealership, ZoneId zone, int duration,
                                                        Set<LocalDate> wanted) {
         // One pass over the smallest range that holds every wanted date
         LocalDate from = Collections.min(wanted);
         LocalDate to = Collections.max(wanted);
 
-        List<UUID> bayIds = repository.findFittingBayIds(dealershipId, vehicleTypeId);
+        // Only the asked bay; an inactive or non-fitting bay gives empty days
+        List<UUID> bayIds = serviceBay.fits() ? List.of(serviceBayId) : List.of();
         List<UUID> technicianIds = repository.findQualifiedTechnicianIds(dealershipId, serviceTypeId, vehicleTypeId);
 
         Map<UUID, List<Interval>> bayBusy = emptySchedules(bayIds);
@@ -102,7 +108,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
             Instant spanEnd = to.plusDays(1).atStartOfDay(zone).toInstant();
             for (Booking b : repository.findBookings(dealershipId, bayIds, technicianIds, spanStart, spanEnd)) {
                 Interval busy = new Interval(b.start(), b.end());
-                // A booking may hold one fitting resource and one that does not fit this query
+                // Bookings of a qualified technician on another bay also block this bay's slot
                 List<Interval> bay = bayBusy.get(b.serviceBayId());
                 if (bay != null) {
                     bay.add(busy);

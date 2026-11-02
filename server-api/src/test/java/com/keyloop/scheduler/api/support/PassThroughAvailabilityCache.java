@@ -16,7 +16,8 @@ import com.keyloop.scheduler.api.cache.availability.AvailabilityCache;
 public final class PassThroughAvailabilityCache implements AvailabilityCache {
 
     @Override
-    public Lookup lookup(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId, List<LocalDate> dates) {
+    public Lookup lookup(UUID dealershipId, UUID serviceBayId, UUID serviceTypeId, UUID vehicleTypeId,
+                         List<LocalDate> dates) {
         List<LocalDate> copy = List.copyOf(dates);
         return loader -> copy.isEmpty() ? Map.of() : loader.apply(new LinkedHashSet<>(copy));
     }

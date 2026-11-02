@@ -11,6 +11,13 @@
     "STAFF_ONLY": "01945cf5-cc00-71a6-a48e-9cda94e3bf91",
     "CLOSED": "01946742-8400-718f-ad93-39088c38fb29"
   },
+  "serviceBays": {
+    "Q7_STANDARD": "01941fce-4b68-7295-9b9e-0da9b4d19ec1",
+    "Q7_INACTIVE": "01941fce-66c0-7626-a11d-a2e354dd0ba5",
+    "Q7_EV": "01941fce-7a48-71ad-90ff-014915850a03",
+    "KIRITIMATI": "01941fce-d038-73d0-8701-40b1f0290531",
+    "EXPRESS_KIOSK": "01941fce-fb30-7fa6-a0e9-398a30803889"
+  },
   "serviceTypes": {
     "OIL_CHANGE": "01941f97-5ce8-7aed-ac5f-7495f4c18226",
     "TYRE_ROTATION": "01941f97-60d0-7a49-8572-247f3add6527",
@@ -496,6 +503,16 @@
         "vin": "05D6T88NWFE852LNT",
         "vehicleType": "GASOLINE_CAR"
       }
+    ],
+    "q7DieselBays": [
+      "01941fce-4b68-7295-9b9e-0da9b4d19ec1",
+      "01941fce-4f50-7fe7-99d8-04d983feb17b",
+      "01941fce-5338-756d-8c87-14a56bd8c676",
+      "01941fce-5720-75b4-85e6-81c7518ae452",
+      "01941fce-5b08-7b8d-813f-35555daf106d",
+      "01941fce-5ef0-7568-9d5a-dca28dd63cb9",
+      "01941fce-62d8-770c-8128-4151b401ba85",
+      "01941fce-7660-73a8-b816-cf84f8c110fb"
     ]
   }
 }
