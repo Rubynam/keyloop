@@ -14,6 +14,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -29,6 +31,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.function.Function;
+
+import javax.sql.DataSource;
 
 import com.keyloop.scheduler.api.model.appointment.NewAppointment;
 import com.keyloop.scheduler.api.repository.appointment.AppointmentRepository;
@@ -68,6 +73,8 @@ class AppointmentBookingIT extends IntegrationTest {
     private JdbcClient jdbc;
     @Autowired
     private JsonMapper json;
+    @Autowired
+    private DataSource dataSource;
     @MockitoSpyBean
     private AppointmentRepository appointments;
     @MockitoSpyBean
@@ -335,6 +342,129 @@ class AppointmentBookingIT extends IntegrationTest {
     }
 
     @Test
+    void firstPairTechnicianDeactivatedThenSecondPairIsBooked() throws Exception {
+        fixtures.bay(dealer, vehicleType);
+        fixtures.technician(dealer, service, vehicleType);
+        fixtures.technician(dealer, service, vehicleType);
+        List<NewAppointment> tried = deactivateBeforeFirstInsert("technicians", NewAppointment::technicianId);
+        String key = key();
+
+        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, local("09:00")));
+
+        assertThat(response.statusCode()).isEqualTo(201);
+        assertThat(tried).hasSize(2);
+        assertThat(tried.get(1).technicianId()).isNotEqualTo(tried.get(0).technicianId());
+        assertThat(json.readTree(response.body()).get("technicianId").asString())
+                .isEqualTo(tried.get(1).technicianId().toString());
+        assertThat(appointmentsWithKey(key)).isEqualTo(1);
+        assertThat(outboxRowsOfDealer()).isEqualTo(1);
+    }
+
+    @Test
+    void firstPairBayDeactivatedThenSecondPairIsBooked() throws Exception {
+        fixtures.bay(dealer, vehicleType);
+        fixtures.bay(dealer, vehicleType);
+        fixtures.technician(dealer, service, vehicleType);
+        List<NewAppointment> tried = deactivateBeforeFirstInsert("service_bays", NewAppointment::serviceBayId);
+        String key = key();
+
+        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, local("09:00")));
+
+        assertThat(response.statusCode()).isEqualTo(201);
+        assertThat(tried).hasSize(2);
+        assertThat(tried.get(1).serviceBayId()).isNotEqualTo(tried.get(0).serviceBayId());
+        assertThat(json.readTree(response.body()).get("serviceBayId").asString())
+                .isEqualTo(tried.get(1).serviceBayId().toString());
+        assertThat(appointmentsWithKey(key)).isEqualTo(1);
+        assertThat(outboxRowsOfDealer()).isEqualTo(1);
+    }
+
+    @Test
+    void onlyPairDeactivatedMidFlightIs409AndLeavesNoRows() throws Exception {
+        fixtures.bay(dealer, vehicleType);
+        fixtures.technician(dealer, service, vehicleType);
+        List<NewAppointment> tried = deactivateBeforeFirstInsert("technicians", NewAppointment::technicianId);
+        String key = key();
+
+        assertProblem(book(key, body(customer, vehicle, dealer, service, local("09:00"))), 409, BOOKING_FAILED);
+
+        assertThat(tried).hasSize(1);
+        assertThat(appointmentsWithKey(key)).isZero();
+        assertThat(outboxRowsOfDealer()).isZero();
+    }
+
+    @Test
+    void deactivationStillOpenDuringInsertIsWaitedForAndSeen() throws Exception {
+        fixtures.bay(dealer, vehicleType);
+        fixtures.technician(dealer, service, vehicleType);
+        fixtures.technician(dealer, service, vehicleType);
+        List<NewAppointment> tried = new ArrayList<>();
+        doAnswer(invocation -> {
+            NewAppointment a = invocation.getArgument(0);
+            if (tried.isEmpty()) {
+                // The deactivation holds its row lock while our insert starts, and commits
+                // only later: without FOR SHARE our snapshot would still see active = true
+                CountDownLatch updated = new CountDownLatch(1);
+                pool.submit(() -> {
+                    try (Connection c = dataSource.getConnection()) {
+                        c.setAutoCommit(false);
+                        try (PreparedStatement s = c.prepareStatement(
+                                "UPDATE technicians SET active = false WHERE id = ?")) {
+                            s.setObject(1, a.technicianId());
+                            s.executeUpdate();
+                        }
+                        updated.countDown();
+                        Thread.sleep(300);
+                        c.commit();
+                    }
+                    return null;
+                });
+                updated.await();
+            }
+            tried.add(a);
+            return invocation.callRealMethod();
+        }).when(appointments).insert(any());
+        String key = key();
+
+        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, local("09:00")));
+
+        assertThat(response.statusCode()).isEqualTo(201);
+        assertThat(tried).hasSize(2);
+        assertThat(json.readTree(response.body()).get("technicianId").asString())
+                .isEqualTo(tried.get(1).technicianId().toString());
+        assertThat(appointmentsWithKey(key)).isEqualTo(1);
+    }
+
+    @Test
+    void inactiveTechnicianOrBayIsNeverOffered() throws Exception {
+        UUID activeBay = fixtures.bay(dealer, vehicleType);
+        UUID inactiveBay = fixtures.bay(dealer, vehicleType);
+        UUID activeTech = fixtures.technician(dealer, service, vehicleType);
+        UUID inactiveTech = fixtures.technician(dealer, service, vehicleType);
+        jdbc.sql("UPDATE service_bays SET active = false WHERE id = ?").param(inactiveBay).update();
+        jdbc.sql("UPDATE technicians SET active = false WHERE id = ?").param(inactiveTech).update();
+        List<NewAppointment> tried = new ArrayList<>();
+        doAnswer(invocation -> {
+            tried.add(invocation.getArgument(0));
+            return invocation.callRealMethod();
+        }).when(appointments).insert(any());
+
+        HttpResponse<String> first = book(key(), body(customer, vehicle, dealer, service, local("09:00")));
+        UUID owner = fixtures.customer();
+        HttpResponse<String> second = book(key(),
+                body(owner, fixtures.vehicle(owner, vehicleType), dealer, service, local("09:00")));
+
+        assertThat(first.statusCode()).isEqualTo(201);
+        JsonNode body = json.readTree(first.body());
+        assertThat(body.get("serviceBayId").asString()).isEqualTo(activeBay.toString());
+        assertThat(body.get("technicianId").asString()).isEqualTo(activeTech.toString());
+        // The only active pair is taken: the inactive ones are not tried, so 409
+        assertProblem(second, 409, BOOKING_FAILED);
+        assertThat(tried).extracting(NewAppointment::serviceBayId).containsOnly(activeBay);
+        assertThat(tried).extracting(NewAppointment::technicianId).containsOnly(activeTech);
+    }
+
+    @Test
     void ac16AllPairsFailIs409AndLeavesNoRows() throws Exception {
         fixtures.bay(dealer, vehicleType);
         fixtures.bay(dealer, vehicleType);
@@ -481,6 +611,24 @@ class AppointmentBookingIT extends IntegrationTest {
         } catch (ExecutionException alreadyTaken) {
             // ex_appointments_bay / _technician: the pair is blocked anyway
         }
+    }
+
+    /**
+     * Before the first insert only, sets {@code active = false} on that pair's row in
+     * {@code table} (committed on another connection), so the selector's pick is stale.
+     */
+    private List<NewAppointment> deactivateBeforeFirstInsert(String table, Function<NewAppointment, UUID> idOf) {
+        List<NewAppointment> tried = new ArrayList<>();
+        doAnswer(invocation -> {
+            NewAppointment a = invocation.getArgument(0);
+            if (tried.isEmpty()) {
+                pool.submit(() -> jdbc.sql("UPDATE " + table + " SET active = false WHERE id = ?")
+                        .param(idOf.apply(a)).update()).get();
+            }
+            tried.add(a);
+            return invocation.callRealMethod();
+        }).when(appointments).insert(any());
+        return tried;
     }
 
     private interface Call {
