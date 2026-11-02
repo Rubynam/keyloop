@@ -18,6 +18,7 @@ import com.keyloop.scheduler.api.exception.appointment.OutsideBusinessHoursExcep
 import com.keyloop.scheduler.api.exception.appointment.VehicleBusyException;
 import com.keyloop.scheduler.api.exception.appointment.VehicleOwnerMismatchException;
 import com.keyloop.scheduler.api.exception.availability.InvalidRangeException;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSourceResolvable;
@@ -49,11 +50,15 @@ import tools.jackson.core.JacksonException;
  * for malformed requests and replaces Boot's default handler
  * (spring.mvc.problemdetails.enabled). Edge validation errors add an {@code errors[]}
  * list. Unexpected errors are logged and answered with a generic body, never internals.
+ * Every body carries the request's {@code traceId}, so a client can quote it and we can
+ * open the trace (spine AD-4).
  *
  * <pre>
  * 400 { title: "Bad Request", status: 400, detail: "Invalid request",
- *       errors: [ { field: "startTime", message: "must be a future date" } ] }
- * 409 { title: "Booking failed", status: 409, detail: "Booking failed: no technician ..." }
+ *       errors: [ { field: "startTime", message: "must be a future date" } ],
+ *       traceId: "4bf92f3577b34da6a3ce929d0e0e4736" }
+ * 409 { title: "Booking failed", status: 409, detail: "Booking failed: no technician ...",
+ *       traceId: "4bf92f3577b34da6a3ce929d0e0e4736" }
  * </pre>
  */
 @RestControllerAdvice
@@ -61,27 +66,33 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
+    private final TraceIds traceIds;
+
+    public ApiExceptionHandler(TraceIds traceIds) {
+        this.traceIds = traceIds;
+    }
+
     @ExceptionHandler(NotFoundException.class)
     ProblemDetail notFound(NotFoundException e) {
-        return problem(HttpStatus.NOT_FOUND, e.getMessage());
+        return withTraceId(problem(HttpStatus.NOT_FOUND, e.getMessage()));
     }
 
     @ExceptionHandler(InvalidRangeException.class)
     ProblemDetail invalidRange(InvalidRangeException e) {
-        return problem(HttpStatus.BAD_REQUEST, e.getMessage());
+        return withTraceId(problem(HttpStatus.BAD_REQUEST, e.getMessage()));
     }
 
     /** Spec07 §5.1 step 2: the vehicle belongs to another customer → 400. */
     @ExceptionHandler(VehicleOwnerMismatchException.class)
     ProblemDetail vehicleOwnerMismatch(VehicleOwnerMismatchException e) {
-        return problem(HttpStatus.BAD_REQUEST, e.getMessage());
+        return withTraceId(problem(HttpStatus.BAD_REQUEST, e.getMessage()));
     }
 
     /** Spec07 §6: valid shape, but a booking rule fails → 422. */
     @ExceptionHandler({VehicleBusyException.class, IdempotencyKeyMismatchException.class,
             NotServiceableException.class, OutsideBusinessHoursException.class, OffSlotGridException.class})
     ProblemDetail bookingRule(RuntimeException e) {
-        return problem(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage());
+        return withTraceId(problem(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage()));
     }
 
     /** Spec04 §6: every pair taken → 409 with its own title. */
@@ -89,20 +100,20 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     ProblemDetail bookingConflict(BookingConflictException e) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
         problem.setTitle(AppointmentConstants.BOOKING_FAILED_TITLE);
-        return problem;
+        return withTraceId(problem);
     }
 
     /** DLD §11: PostgreSQL unavailable → 503. */
     @ExceptionHandler(DataAccessException.class)
     ProblemDetail dataAccess(DataAccessException e) {
         log.error("Database error", e);
-        return problem(HttpStatus.SERVICE_UNAVAILABLE, ErrorMessages.SERVICE_UNAVAILABLE);
+        return withTraceId(problem(HttpStatus.SERVICE_UNAVAILABLE, ErrorMessages.SERVICE_UNAVAILABLE));
     }
 
     @ExceptionHandler(Exception.class)
     ProblemDetail unexpected(Exception e) {
         log.error("Unexpected error", e);
-        return problem(HttpStatus.INTERNAL_SERVER_ERROR, ErrorMessages.UNEXPECTED);
+        return withTraceId(problem(HttpStatus.INTERNAL_SERVER_ERROR, ErrorMessages.UNEXPECTED));
     }
 
     /** {@code @Valid @RequestBody} failed: one entry per bad field. */
@@ -165,6 +176,23 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             return handleExceptionInternal(ex, invalidRequest(errors), headers, status, request);
         }
         return super.handleServletRequestBindingException(ex, headers, status, request);
+    }
+
+    /** Every inherited Spring 400/405/415/... and every override above ends here: add the trace id. */
+    @Override
+    protected ResponseEntity<Object> handleExceptionInternal(Exception ex, @Nullable Object body,
+            HttpHeaders headers, HttpStatusCode statusCode, WebRequest request) {
+        ResponseEntity<Object> response = super.handleExceptionInternal(ex, body, headers, statusCode, request);
+        if (response != null && response.getBody() instanceof ProblemDetail problem) {
+            withTraceId(problem);
+        }
+        return response;
+    }
+
+    /** The one place that sets {@code traceId}; left out when there is no current span. */
+    private ProblemDetail withTraceId(ProblemDetail problem) {
+        traceIds.current().ifPresent(id -> problem.setProperty(ErrorMessages.TRACE_ID_PROPERTY, id));
+        return problem;
     }
 
     /** Title is the standard reason phrase (Spec05 D9), e.g. "Not Found". */

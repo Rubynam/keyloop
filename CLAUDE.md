@@ -54,13 +54,16 @@ server-api  (com.keyloop.scheduler.api)
 ├── exception/         NotFoundException (shared)
 │   ├── appointment/   BookingConflictException, VehicleBusyException, NotServiceableException, ...
 │   └── availability/  InvalidRangeException
-├── constant/          ApiPaths, HeaderNames, ErrorMessages, OutboxEventTypes (shared)
+├── constant/          ApiPaths, HeaderNames, ErrorMessages, OutboxEventTypes, TracingConstants (shared)
 │   ├── appointment/   AppointmentConstants
 │   └── availability/  AvailabilityConstants
 ├── config/            ClockConfig
 │   ├── appointment/   AppointmentConfig, BookingProperties, ValidationClockConfig
-│   └── availability/  AvailabilityConfig, AvailabilityProperties, AvailabilityCacheProperties
-└── web/               ApiExceptionHandler, RequestIdFilter (cross-cutting HTTP infra)
+│   ├── availability/  AvailabilityConfig, AvailabilityProperties, AvailabilityCacheProperties
+│   └── tracing/       NoiseObservationPredicate, RootSpanExportingPredicate (noise filters)
+├── tracing/           business-span ports, same shape as repository/ (story-outbox-tracing)
+│   └── <feature>/     XxxTracing (interface) + impl/ (Micrometer Observation)
+└── web/               ApiExceptionHandler, RequestIdFilter, TraceIds (cross-cutting HTTP infra)
 
 scheduler-batch  (com.keyloop.scheduler.batch)
 ├── schedule/          JobScheduler, OutboxRelay (@Scheduled entry points = "controllers")
@@ -84,15 +87,23 @@ scheduler-batch  (com.keyloop.scheduler.batch)
 │   └── outbox/        OutboxEvent
 ├── exception/
 │   └── outbox/        InvalidPayloadException
-├── constant/          JobNames, SchedulingConstants
+├── constant/          JobNames, SchedulingConstants, TracingConstants
 │   └── outbox/        RelayConstants
+├── tracing/           business-span ports, same shape as repository/ (story-outbox-tracing)
+│   └── <feature>/     XxxTracing (interface) + impl/ (Micrometer Observation)
 └── config/            SchedulingConfig
-    └── outbox/        OutboxRelayProperties, OutboxCleanupProperties
+    ├── outbox/        OutboxRelayProperties, OutboxCleanupProperties
+    └── tracing/       NoiseObservationPredicate, RootSpanExportingPredicate (noise filters)
+
+common-logging  (com.keyloop.scheduler.logging)
+└── CorrelationId, MethodLoggingAspect, ClientError, TraceAttributes (span/tag names used by both apps)
 ```
 
 In `scheduler-batch`, `@Scheduled` classes (`schedule/`) and tasklets (`job/<feature>/`) play the controller role: they call a service interface only. Redis-backed ports there live in `store/`.
 
-`ArchitectureTest` in each app (ArchUnit, Spec05 §7 ARC-01…08) fails the build when these rules break.
+Tracing (spine `architecture-keyloop-tracing-2026-11-01`): framework instrumentation makes HTTP, JDBC, Redis, `@Scheduled` and Batch spans with no code. A business span goes through a `tracing/<feature>/` port that only service implementations call. Micrometer `Tracer` / `Observation*` types appear only in `tracing/**/impl`, `config/` and `web/TraceIds`.
+
+`ArchitectureTest` in each app (ArchUnit, Spec05 §7 ARC-01…08, tracing ARC-09…10) fails the build when these rules break.
 
 Full target layout and migration plan: [planing/Spec05.md](planing/Spec05.md).
 

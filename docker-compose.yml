@@ -12,6 +12,9 @@ x-app-env: &app-env
   LOG_PATH: /app/logs
   # JVM default zone: log timestamps and @Scheduled cron (images default to UTC)
   TZ: ${TZ:-Asia/Ho_Chi_Minh}
+  # Tracing (spine AD-2, AD-8): OTLP/HTTP straight to Jaeger, one sampling ratio for both apps
+  TRACING_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+  TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-1.0}
 
 services:
   postgres:
@@ -67,6 +70,7 @@ services:
       lb-net:
         aliases: [server-api]
       data-net: {}
+      obs-net: {}
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,7 +89,7 @@ services:
       - ./logs:/app/logs
     ports:
       - "${BATCH_PORT:-8081}:8081"
-    networks: [data-net]
+    networks: [data-net, obs-net]
     depends_on:
       postgres:
         condition: service_healthy
@@ -114,6 +118,16 @@ services:
       timeout: 3s
       retries: 10
 
+  # Trace store (spine AD-5). In-memory, capped at 100 000 traces by the built-in
+  # all-in-one config. No healthcheck and no depends_on on it: tracing never blocks start-up.
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.22.0
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686"
+      # OTLP/HTTP, published for apps run from the IDE
+      - "${JAEGER_OTLP_PORT:-4318}:4318"
+    networks: [obs-net]
+
 networks:
   # Only network with a published port
   edge: {}
@@ -123,6 +137,8 @@ networks:
   # apps <-> postgres/redis. Not internal in dev only because postgres/redis publish
   # host ports for IDE runs (Spec01 INF-10); make it internal in production.
   data-net: {}
+  # apps -> jaeger only; nginx and the databases are not on it
+  obs-net: {}
 
 volumes:
   pg-data:
