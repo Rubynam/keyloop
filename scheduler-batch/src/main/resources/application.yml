@@ -7,7 +7,8 @@ spring:
   datasource:
     # "batch" first: Batch metadata + ShedLock tables are created there;
     # "public" second: domain tables (owned by server-api) stay reachable unqualified
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${POSTGRES_DB:scheduler}?currentSchema=batch,public
+    # DB_HOSTS = every node; targetServerType=primary picks the writable one (spine AD-3/AD-9)
+    url: jdbc:postgresql://${DB_HOSTS:localhost:5432}/${POSTGRES_DB:scheduler}?currentSchema=batch,public&targetServerType=primary
     username: ${POSTGRES_USER:scheduler}
     password: ${POSTGRES_PASSWORD:scheduler}
     hikari:
@@ -23,8 +24,11 @@ spring:
       initialize-schema: always
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+      # REDIS_NODES = every node; all commands go to the master (spine AD-3)
+      masterreplica:
+        nodes: ${REDIS_NODES:localhost:6379}
+      lettuce:
+        read-from: upstream
       timeout: 1s   # upper bound for one command (Spec04 REL-05)
 
 scheduler:

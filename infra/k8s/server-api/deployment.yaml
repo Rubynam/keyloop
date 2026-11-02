@@ -34,16 +34,13 @@ spec:
             - name: http
               containerPort: 8080
           env:
-            - name: DB_HOST
-              value: postgres
-            - name: DB_PORT
-              value: "5432"
+            # Node lists (spine AD-9); one node each until the data tier gets replicas here
+            - name: DB_HOSTS
+              value: postgres:5432
             - name: POSTGRES_DB
               value: scheduler
-            - name: REDIS_HOST
-              value: redis
-            - name: REDIS_PORT
-              value: "6379"
+            - name: REDIS_NODES
+              value: redis:6379
             - name: LOG_PATH
               value: /app/logs
             # 1 CPU makes the JVM pick SerialGC; G1 with a periodic GC hands

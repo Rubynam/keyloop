@@ -35,7 +35,12 @@ export LOCUST_RUN_TIME="$((SIM_DURATION + 60))s"
 TS=$(date +%Y%m%d-%H%M%S)
 RUN=loadtest/reports/$LOADTEST_PROFILE-$TS
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.loadtest.yml)
-psql() { docker compose exec -T postgres psql -U "${POSTGRES_USER:-scheduler}" -d "${POSTGRES_DB:-scheduler}" "$@"; }
+# Writable nodes come from .env (PG_PRIMARY / REDIS_MASTER), not from fixed service names
+PG_PRIMARY=${PG_PRIMARY:-$(sed -n 's/^PG_PRIMARY=//p' .env 2>/dev/null | tail -1)}
+export PG_PRIMARY=${PG_PRIMARY:-postgres-1}
+REDIS_MASTER=${REDIS_MASTER:-$(sed -n 's/^REDIS_MASTER=//p' .env 2>/dev/null | tail -1)}
+export REDIS_MASTER=${REDIS_MASTER:-redis-1}
+psql() { docker compose exec -T "$PG_PRIMARY" psql -U "${POSTGRES_USER:-scheduler}" -d "${POSTGRES_DB:-scheduler}" "$@"; }
 step() { printf '\n=== %s  %s\n' "$(date +%T)" "$*"; }
 
 mkdir -p "$RUN/logs"
@@ -50,8 +55,8 @@ docker compose up -d --force-recreate --wait
 
 step "seed (wipes domain tables) and empty Redis: every run starts cold"
 seeding/seed.sh > "$RUN/seed.txt"
-docker compose exec -T redis redis-cli FLUSHALL > /dev/null
-docker compose exec -T redis redis-cli CONFIG RESETSTAT > /dev/null
+docker compose exec -T "$REDIS_MASTER" redis-cli FLUSHALL > /dev/null
+docker compose exec -T "$REDIS_MASTER" redis-cli CONFIG RESETSTAT > /dev/null
 START=$(psql -Atc "SELECT now()")
 # Log timestamps are local to the app containers (TZ in docker-compose.yml): the analysis
 # skips lines before this, e.g. shutdown lines of the containers --force-recreate replaced
@@ -91,7 +96,7 @@ kill $SAMPLER 2>/dev/null || true
 
 step "cache freshness: cached answer (Redis) must equal a fresh answer (PostgreSQL) once the relay drained"
 python3 - "$RUN/cache_freshness.txt" <<'PY'
-import json, subprocess, sys, urllib.request
+import json, os, subprocess, sys, urllib.request
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
@@ -105,7 +110,7 @@ def get(service, frm, to):
     with urllib.request.urlopen(f"http://localhost:8080/api/v1/availability?{q}") as r:
         return json.load(r)["days"]
 cached = {k: get(*v) for k, v in queries.items()}
-subprocess.run(["docker", "compose", "exec", "-T", "redis", "redis-cli", "FLUSHALL"], check=True, capture_output=True)
+subprocess.run(["docker", "compose", "exec", "-T", os.environ["REDIS_MASTER"], "redis-cli", "FLUSHALL"], check=True, capture_output=True)
 lines = []
 for k, v in queries.items():
     for c, f in zip(cached[k], get(*v)):
@@ -135,8 +140,8 @@ fi
   echo; echo "max attempts / last errors:"
   psql -At -c "SELECT attempts, count(*), max(last_error) FROM outbox_events WHERE created_at >= '$START' GROUP BY 1 ORDER BY 1"
 } > "$RUN/relay_lag.txt"
-docker compose exec -T redis redis-cli INFO stats | grep -E 'keyspace_(hits|misses)|expired_keys|evicted_keys|total_commands' > "$RUN/redis_info.txt"
-docker compose exec -T redis redis-cli INFO memory | grep -E 'used_memory_human|maxmemory_human' >> "$RUN/redis_info.txt"
+docker compose exec -T "$REDIS_MASTER" redis-cli INFO stats | grep -E 'keyspace_(hits|misses)|expired_keys|evicted_keys|total_commands' > "$RUN/redis_info.txt"
+docker compose exec -T "$REDIS_MASTER" redis-cli INFO memory | grep -E 'used_memory_human|maxmemory_human' >> "$RUN/redis_info.txt"
 psql -c "SELECT numbackends, xact_commit, xact_rollback, deadlocks, conflicts, temp_files, blks_hit, blks_read
          FROM pg_stat_database WHERE datname = current_database()" > "$RUN/pg_stats.txt"
 psql -c "SELECT state, count(*) FROM pg_stat_activity WHERE datname = current_database() GROUP BY 1" >> "$RUN/pg_stats.txt"

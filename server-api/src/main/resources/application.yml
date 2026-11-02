@@ -11,7 +11,8 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 20s
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${POSTGRES_DB:scheduler}
+    # DB_HOSTS = every node (host:port,host:port); pgjdbc connects to the writable one (spine AD-3/AD-9)
+    url: jdbc:postgresql://${DB_HOSTS:localhost:5432}/${POSTGRES_DB:scheduler}?targetServerType=primary
     username: ${POSTGRES_USER:scheduler}
     password: ${POSTGRES_PASSWORD:scheduler}
   jpa:
@@ -23,8 +24,11 @@ spring:
     locations: classpath:db/migration
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+      # REDIS_NODES = every node; Lettuce finds the master by role (static master/replica, spine AD-3)
+      masterreplica:
+        nodes: ${REDIS_NODES:localhost:6379}
+      lettuce:
+        read-from: upstream
       # Upper bound for one command: Redis down must not stall a read (fail-open, REL-05)
       timeout: 1s
   mvc:

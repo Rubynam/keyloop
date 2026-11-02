@@ -65,7 +65,8 @@ services:
       context: ./loadtest/simulator
     image: keyloop/loadtest-simulator:local
     environment:
-      DB_HOST: postgres
+      # Node list; the simulator connects to the writable one (target_session_attrs=read-write)
+      DB_HOSTS: postgres-1:5432,postgres-2:5432
       POSTGRES_DB: ${POSTGRES_DB:-scheduler}
       POSTGRES_USER: ${POSTGRES_USER:-scheduler}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scheduler}
@@ -76,7 +77,9 @@ services:
       - ./loadtest:/loadtest
     networks: [data-net]
     depends_on:
-      postgres:
+      postgres-1:
+        condition: service_healthy
+      postgres-2:
         condition: service_healthy
     profiles: [loadtest]
 
