@@ -5,7 +5,7 @@
         <Property name="LOG_DIR">${env:LOG_PATH:-logs}</Property>
         <!-- One file per app and host: server-api replicas never write the same file -->
         <Property name="LOG_NAME">${spring:spring.application.name:-app}-${hostName}</Property>
-        <Property name="PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{correlationId}] [%t] %c{1.} : %m%n%ex</Property>
+        <Property name="PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{correlationId}] [%X{traceId},%X{spanId}] [%t] %c{1.} : %m%n%ex</Property>
     </Properties>
 
     <Appenders>

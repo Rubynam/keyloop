@@ -14,6 +14,9 @@ dependencies {
     implementation("org.flywaydb:flyway-database-postgresql")
     // implementation, not runtimeOnly: the appointment repository reads PSQLException constraint names (Spec07 §7.2)
     implementation("org.postgresql:postgresql")
+    // Tracing (spine AD-1): Micrometer Observation → OTel SDK → OTLP/HTTP; JDBC spans from datasource-micrometer
+    implementation("org.springframework.boot:spring-boot-starter-opentelemetry")
+    implementation(libs.datasource.micrometer.spring.boot)
 
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     // Integration tests against real Postgres 18 + Redis 8 (Spec04 TST-01)
@@ -23,4 +26,8 @@ dependencies {
     testImplementation("com.redis:testcontainers-redis")
     // Layering rules of CLAUDE.md §1 as tests (Spec05 §7, ARC-01…08)
     testImplementation(libs.archunit.junit5)
+    // @AutoConfigureTracing (export is off in @SpringBootTest without it) + InMemorySpanExporter;
+    // the tracing ITs never call Jaeger
+    testImplementation("org.springframework.boot:spring-boot-starter-opentelemetry-test")
+    testImplementation("io.opentelemetry:opentelemetry-sdk-testing")
 }

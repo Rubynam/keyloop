@@ -22,9 +22,11 @@ import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse.Slot;
 import com.keyloop.scheduler.api.exception.NotFoundException;
 import com.keyloop.scheduler.api.exception.availability.InvalidRangeException;
 import com.keyloop.scheduler.api.service.availability.AvailabilityService;
+import com.keyloop.scheduler.api.support.WebSliceTracingConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -32,6 +34,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 @WebMvcTest(AvailabilityController.class)
+@Import(WebSliceTracingConfig.class)
 class AvailabilityControllerTest {
 
     private static final UUID DEALER = UUID.fromString("01942976-3400-790c-bca3-04171fb17c23");
@@ -90,7 +93,8 @@ class AvailabilityControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.title").value("Not Found"))
-                .andExpect(jsonPath("$.detail").value("Dealership " + DEALER + " not found"));
+                .andExpect(jsonPath("$.detail").value("Dealership " + DEALER + " not found"))
+                .andExpect(jsonPath("$.traceId").value(WebSliceTracingConfig.TRACE_ID));
     }
 
     @Test
@@ -103,7 +107,8 @@ class AvailabilityControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.title").value("Bad Request"))
-                .andExpect(jsonPath("$.detail").value("'to' is before 'from'"));
+                .andExpect(jsonPath("$.detail").value("'to' is before 'from'"))
+                .andExpect(jsonPath("$.traceId").value(WebSliceTracingConfig.TRACE_ID));
     }
 
     @Test
@@ -116,7 +121,8 @@ class AvailabilityControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(400))
-                .andExpect(jsonPath("$.detail").value(containsString("vehicleTypeId")));
+                .andExpect(jsonPath("$.detail").value(containsString("vehicleTypeId")))
+                .andExpect(jsonPath("$.traceId").value(WebSliceTracingConfig.TRACE_ID));
         verifyNoInteractions(service);
     }
 
@@ -154,7 +160,8 @@ class AvailabilityControllerTest {
                 .andExpect(jsonPath("$.status").value(503))
                 .andExpect(jsonPath("$.title").value("Service Unavailable"))
                 .andExpect(jsonPath("$.detail").value("The service is temporarily unavailable, please retry later."))
-                .andExpect(content().string(not(containsString("10.0.0.5"))));
+                .andExpect(content().string(not(containsString("10.0.0.5"))))
+                .andExpect(jsonPath("$.traceId").value(WebSliceTracingConfig.TRACE_ID));
     }
 
     @Test
@@ -168,6 +175,7 @@ class AvailabilityControllerTest {
                 .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.title").value("Internal Server Error"))
                 .andExpect(jsonPath("$.detail").value("An unexpected error occurred."))
-                .andExpect(content().string(not(containsString("secret"))));
+                .andExpect(content().string(not(containsString("secret"))))
+                .andExpect(jsonPath("$.traceId").value(WebSliceTracingConfig.TRACE_ID));
     }
 }

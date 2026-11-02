@@ -35,6 +35,9 @@ public final class ErrorMessages {
     public static final String BODY_FIELD = "body";
     public static final String MISSING_HEADER = "required header is missing";
 
+    /** ProblemDetail property with the request's trace id, on every error body (spine AD-4). */
+    public static final String TRACE_ID_PROPERTY = "traceId";
+
     public static final String SERVICE_UNAVAILABLE = "The service is temporarily unavailable, please retry later.";
     public static final String UNEXPECTED = "An unexpected error occurred.";
 }
