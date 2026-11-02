@@ -11,6 +11,7 @@ import java.util.UUID;
 import com.keyloop.scheduler.api.model.AppointmentStatus;
 import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
+import com.keyloop.scheduler.api.model.availability.ServiceBay;
 import com.keyloop.scheduler.api.model.availability.ServiceType;
 import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -58,6 +59,24 @@ public class JdbcAvailabilityRepository implements AvailabilityRepository {
         return jdbc.sql("SELECT name FROM vehicle_types WHERE id = :id")
                 .param("id", vehicleTypeId)
                 .query(String.class)
+                .optional();
+    }
+
+    @Override
+    public Optional<ServiceBay> findServiceBay(UUID dealershipId, UUID serviceBayId, UUID vehicleTypeId) {
+        return jdbc.sql("""
+                        SELECT b.name, b.active,
+                               EXISTS (SELECT 1 FROM service_bay_vehicle_types bv
+                                       WHERE bv.service_bay_id = b.id AND bv.vehicle_type_id = :vehicleTypeId)
+                                   AS takes_vehicle_type
+                        FROM service_bays b
+                        WHERE b.id = :serviceBayId AND b.dealership_id = :dealershipId
+                        """)
+                .param("dealershipId", dealershipId)
+                .param("serviceBayId", serviceBayId)
+                .param("vehicleTypeId", vehicleTypeId)
+                .query((rs, n) -> new ServiceBay(rs.getString("name"), rs.getBoolean("active"),
+                        rs.getBoolean("takes_vehicle_type")))
                 .optional();
     }
 

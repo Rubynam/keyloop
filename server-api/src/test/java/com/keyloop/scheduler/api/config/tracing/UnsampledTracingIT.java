@@ -43,7 +43,7 @@ class UnsampledTracingIT {
     @Test
     void ac4UnsampledErrorBodyStillHasTraceId() throws Exception {
         URI uri = URI.create("http://localhost:" + port + "/api/v1/availability?dealershipId=" + UUID.randomUUID()
-                + "&serviceTypeId=" + UUID.randomUUID() + "&vehicleTypeId=" + UUID.randomUUID()
+                + "&serviceBayId=" + UUID.randomUUID() + "&serviceTypeId=" + UUID.randomUUID() + "&vehicleTypeId=" + UUID.randomUUID()
                 + "&from=" + TracingIT.DAY + "&to=" + TracingIT.DAY);
         HttpResponse<String> response = http.send(HttpRequest.newBuilder(uri).GET().build(),
                 HttpResponse.BodyHandlers.ofString());

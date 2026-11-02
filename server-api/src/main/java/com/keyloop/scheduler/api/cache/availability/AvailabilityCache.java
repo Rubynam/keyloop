@@ -17,9 +17,9 @@ import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse.Slot;
  * spec-availability-ops, cache-read-path.md, ROADMAP D1.
  *
  * <pre>
- * Lookup l = cache.lookup(D1, OIL, SUV, [11-02, 11-03]);   step 1: read versions
+ * Lookup l = cache.lookup(D1, B1, OIL, SUV, [11-02, 11-03]);   step 1: read versions
  * ... PostgreSQL checks (404s) ...
- * l.slots(missing -&gt; computeFromDb(missing));              step 2: hits + rebuild of misses
+ * l.slots(missing -&gt; computeFromDb(missing));                  step 2: hits + rebuild of misses
  *
  *   11-02  hit  (v4) ──────────────► from Redis
  *   11-03  miss (v0) ──loader([11-03])──► from PostgreSQL, then written to Redis
@@ -33,10 +33,11 @@ public interface AvailabilityCache {
      * makes our entry unreachable instead of stale.
      *
      * <pre>
-     * lookup(D1, OIL, SUV, [11-02])  →  Lookup { 11-02 → v4 }
+     * lookup(D1, B1, OIL, SUV, [11-02])  →  Lookup { 11-02 → v4 }
      * </pre>
      */
-    Lookup lookup(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId, List<LocalDate> dates);
+    Lookup lookup(UUID dealershipId, UUID serviceBayId, UUID serviceTypeId, UUID vehicleTypeId,
+                  List<LocalDate> dates);
 
     /**
      * One request's cache read: versions first (from {@link #lookup}), then

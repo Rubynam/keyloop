@@ -128,7 +128,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDatePlus1}}",
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceBayId={{hubBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDatePlus1}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -141,6 +141,10 @@
                 {
                   "key": "dealershipId",
                   "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{hubBayId}}"
                 },
                 {
                   "key": "serviceTypeId",
@@ -160,7 +164,7 @@
                 }
               ]
             },
-            "description": "Main hub (Asia/Ho_Chi_Minh, 08:00-17:00), OIL_CHANGE 60 min, GASOLINE_CAR. Rolling dates (today + 3/4 days)."
+            "description": "Main hub (Asia/Ho_Chi_Minh, 08:00-17:00), OIL_CHANGE 60 min, GASOLINE_CAR. Rolling dates (today + 3/4 days). Bay 01 of the hub (the client picks the bay)."
           },
           "event": [
             {
@@ -191,8 +195,12 @@
                   "        pm.expect(hhmm >= \"08:00\" && hhmm <= \"16:00\", hhmm).to.be.true;",
                   "    });",
                   "});",
-                  "pm.test(\"no bay or technician ids exposed\", () => {",
-                  "    pm.expect(pm.response.text()).to.not.match(/bay|technician/i);",
+                  "pm.test(\"asked bay echoed with its name\", () => {",
+                  "    pm.expect(body.serviceBayId).to.eql(pm.environment.get(\"hubBayId\"));",
+                  "    pm.expect(body.serviceBayName).to.eql(\"Bay 01\");",
+                  "});",
+                  "pm.test(\"no technician ids exposed\", () => {",
+                  "    pm.expect(pm.response.text()).to.not.match(/technician/i);",
                   "});"
                 ]
               }
@@ -210,7 +218,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{riversideDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-11-03&to=2026-11-03",
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{riversideDealershipId}}&serviceBayId={{riversideBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-11-03&to=2026-11-03",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -223,6 +231,10 @@
                 {
                   "key": "dealershipId",
                   "value": "{{riversideDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{riversideBayId}}"
                 },
                 {
                   "key": "serviceTypeId",
@@ -283,7 +295,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{kioskDealershipId}}&serviceTypeId={{tyreRotationServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-11-04&to=2026-11-04",
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{kioskDealershipId}}&serviceBayId={{kioskBayId}}&serviceTypeId={{tyreRotationServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-11-04&to=2026-11-04",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -296,6 +308,10 @@
                 {
                   "key": "dealershipId",
                   "value": "{{kioskDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{kioskBayId}}"
                 },
                 {
                   "key": "serviceTypeId",
@@ -352,7 +368,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{newYorkDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-10-31&to=2026-11-02",
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{newYorkDealershipId}}&serviceBayId={{newYorkBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-10-31&to=2026-11-02",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -365,6 +381,10 @@
                 {
                   "key": "dealershipId",
                   "value": "{{newYorkDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{newYorkBayId}}"
                 },
                 {
                   "key": "serviceTypeId",
@@ -440,7 +460,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{roadside24hDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDate}}",
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{roadside24hDealershipId}}&serviceBayId={{roadside24hBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDate}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -453,6 +473,10 @@
                 {
                   "key": "dealershipId",
                   "value": "{{roadside24hDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{roadside24hBayId}}"
                 },
                 {
                   "key": "serviceTypeId",
@@ -510,7 +534,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{hydrogenCarVehicleTypeId}}&from={{futureDate}}&to={{futureDatePlus2}}",
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceBayId={{hubBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{hydrogenCarVehicleTypeId}}&from={{futureDate}}&to={{futureDatePlus2}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -523,6 +547,10 @@
                 {
                   "key": "dealershipId",
                   "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{hubBayId}}"
                 },
                 {
                   "key": "serviceTypeId",
@@ -555,6 +583,144 @@
                   "    pm.response.to.have.status(200);",
                   "    pm.expect(body.days).to.have.lengthOf(3);",
                   "    body.days.forEach(d => pm.expect(d.slots).to.be.empty);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Availability - inactive bay (hub Bay 08)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceBayId={{hubInactiveBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDatePlus2}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{hubInactiveBayId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDatePlus2}}"
+                }
+              ]
+            },
+            "description": "Bay 08 of the hub is inactive: 200, every date listed with no slots."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"200 with every date empty\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.days).to.have.lengthOf(3);",
+                  "    body.days.forEach(d => pm.expect(d.slots).to.be.empty);",
+                  "});",
+                  "pm.test(\"bay echoed with its name\", () => {",
+                  "    pm.expect(body.serviceBayName).to.eql(\"Bay 08\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Availability - bay does not take the vehicle type (hub EV Bay 01, gasoline car)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceBayId={{hubEvBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDatePlus2}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{hubEvBayId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDatePlus2}}"
+                }
+              ]
+            },
+            "description": "EV Bay 01 takes EVs only, so a gasoline car gets no slots: 200, every date empty."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"200 with every date empty\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.days).to.have.lengthOf(3);",
+                  "    body.days.forEach(d => pm.expect(d.slots).to.be.empty);",
+                  "});",
+                  "pm.test(\"bay echoed with its name\", () => {",
+                  "    pm.expect(body.serviceBayName).to.eql(\"EV Bay 01\");",
                   "});"
                 ]
               }
@@ -1911,7 +2077,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{$guid}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDate}}",
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{$guid}}&serviceBayId={{hubBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDate}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1924,6 +2090,10 @@
                 {
                   "key": "dealershipId",
                   "value": "{{$guid}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{hubBayId}}"
                 },
                 {
                   "key": "serviceTypeId",
@@ -1974,7 +2144,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{$guid}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDate}}",
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceBayId={{hubBayId}}&serviceTypeId={{$guid}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDate}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1987,6 +2157,10 @@
                 {
                   "key": "dealershipId",
                   "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{hubBayId}}"
                 },
                 {
                   "key": "serviceTypeId",
@@ -2037,7 +2211,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{$guid}}&from={{futureDate}}&to={{futureDate}}",
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceBayId={{hubBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{$guid}}&from={{futureDate}}&to={{futureDate}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2050,6 +2224,10 @@
                 {
                   "key": "dealershipId",
                   "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{hubBayId}}"
                 },
                 {
                   "key": "serviceTypeId",
@@ -2090,7 +2268,7 @@
           ]
         },
         {
-          "name": "400 - to before from",
+          "name": "404 - service bay of another dealership",
           "request": {
             "method": "GET",
             "header": [
@@ -2100,7 +2278,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-11-05&to=2026-11-04",
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceBayId={{newYorkBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDate}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2113,6 +2291,75 @@
                 {
                   "key": "dealershipId",
                   "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{newYorkBayId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}"
+                }
+              ]
+            },
+            "description": "A bay of the New York dealership asked under the hub: 404, same as an unknown bay."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 ProblemDetail naming the bay\", () => {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    pm.expect(pm.response.json().detail).to.eql(\"Service bay \" + pm.environment.get(\"newYorkBayId\") + \" not found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - to before from",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceBayId={{hubBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-11-05&to=2026-11-04",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{hubBayId}}"
                 },
                 {
                   "key": "serviceTypeId",
@@ -2163,7 +2410,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-11-02&to=2026-11-16",
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceBayId={{hubBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=2026-11-02&to=2026-11-16",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2176,6 +2423,10 @@
                 {
                   "key": "dealershipId",
                   "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{hubBayId}}"
                 },
                 {
                   "key": "serviceTypeId",
@@ -2228,7 +2479,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&from={{futureDate}}&to={{futureDate}}",
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceBayId={{hubBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&from={{futureDate}}&to={{futureDate}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2241,6 +2492,10 @@
                 {
                   "key": "dealershipId",
                   "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{hubBayId}}"
                 },
                 {
                   "key": "serviceTypeId",
@@ -2279,7 +2534,7 @@
           ]
         },
         {
-          "name": "400 - malformed from",
+          "name": "400 - missing serviceBayId",
           "request": {
             "method": "GET",
             "header": [
@@ -2289,7 +2544,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=abc&to={{futureDate}}",
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDate}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2302,6 +2557,75 @@
                 {
                   "key": "dealershipId",
                   "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}"
+                }
+              ]
+            },
+            "description": "serviceBayId is required: the client picks the bay."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.title).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "pm.test(\"detail names the missing param\", () => pm.expect(pm.response.json().detail).to.include(\"serviceBayId\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 - malformed from",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId={{hubDealershipId}}&serviceBayId={{hubBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from=abc&to={{futureDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{hubBayId}}"
                 },
                 {
                   "key": "serviceTypeId",
@@ -2352,7 +2676,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/availability?dealershipId=not-a-uuid&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDate}}",
+              "raw": "{{baseUrl}}/api/v1/availability?dealershipId=not-a-uuid&serviceBayId={{hubBayId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}&from={{futureDate}}&to={{futureDate}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2365,6 +2689,10 @@
                 {
                   "key": "dealershipId",
                   "value": "not-a-uuid"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{hubBayId}}"
                 },
                 {
                   "key": "serviceTypeId",

@@ -86,6 +86,7 @@ class AvailabilityFailOpenIT extends IntegrationTest {
     private static UUID dealer;
     private static UUID service;
     private static UUID vehicleType;
+    private static UUID bay;
 
     @Test
     @Order(1)
@@ -94,7 +95,7 @@ class AvailabilityFailOpenIT extends IntegrationTest {
         dealer = fixtures.dealership("UTC", "08:00", "17:00");
         vehicleType = fixtures.vehicleType();
         service = fixtures.serviceType(60);
-        fixtures.bay(dealer, vehicleType);
+        bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
 
         redisContainer.stop();
@@ -123,7 +124,7 @@ class AvailabilityFailOpenIT extends IntegrationTest {
 
     private HttpResponse<String> get() throws Exception {
         URI uri = URI.create("http://localhost:" + port + "/api/v1/availability?dealershipId=" + dealer
-                + "&serviceTypeId=" + service + "&vehicleTypeId=" + vehicleType + "&from=" + DAY + "&to=" + DAY);
+                + "&serviceBayId=" + bay + "&serviceTypeId=" + service + "&vehicleTypeId=" + vehicleType + "&from=" + DAY + "&to=" + DAY);
         return http.send(HttpRequest.newBuilder(uri).GET().build(), HttpResponse.BodyHandlers.ofString());
     }
 }

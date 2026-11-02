@@ -194,7 +194,7 @@ class TracingIT {
 
     private HttpResponse<String> availability(UUID dealership, String requestId) throws Exception {
         String uri = "http://localhost:" + port + "/api/v1/availability?dealershipId=" + dealership
-                + "&serviceTypeId=" + service + "&vehicleTypeId=" + vehicleType + "&from=" + DAY + "&to=" + DAY;
+                + "&serviceBayId=" + bay + "&serviceTypeId=" + service + "&vehicleTypeId=" + vehicleType + "&from=" + DAY + "&to=" + DAY;
         return http.send(HttpRequest.newBuilder(URI.create(uri)).header("X-Request-Id", requestId).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
     }

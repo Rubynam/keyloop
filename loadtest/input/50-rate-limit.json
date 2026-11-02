@@ -19,6 +19,7 @@
         "name": "/api/v1/availability [abuse]",
         "query": {
           "dealershipId": "{{ref.dealerships.Q7}}",
+          "serviceBayId": "{{ref.serviceBays.Q7_STANDARD}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
           "vehicleTypeId": "{{ref.vehicleTypes.GASOLINE_CAR}}",
           "from": "{{from}}",

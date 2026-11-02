@@ -41,7 +41,7 @@ class RedisAvailabilityCacheDisabledTest {
         Map<Set<LocalDate>, Integer> calls = new HashMap<>();
 
         Map<LocalDate, List<Slot>> result = cache
-                .lookup(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), List.of(DAY_1, DAY_2))
+                .lookup(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), List.of(DAY_1, DAY_2))
                 .slots(dates -> {
                     calls.merge(Set.copyOf(dates), 1, Integer::sum);
                     return loaded;

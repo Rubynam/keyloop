@@ -40,6 +40,7 @@ class AvailabilityControllerTest {
     private static final UUID DEALER = UUID.fromString("01942976-3400-790c-bca3-04171fb17c23");
     private static final UUID SERVICE = UUID.fromString("01941f97-5ce8-7aed-ac5f-7495f4c18226");
     private static final UUID VEHICLE = UUID.fromString("01941f29-7fe8-752e-89a7-834df2a74de4");
+    private static final UUID BAY = UUID.fromString("01942976-3400-7a11-8c3b-5f2a1e0d9b44");
     private static final LocalDate FROM = LocalDate.of(2026, 10, 31);
     private static final LocalDate TO = LocalDate.of(2026, 11, 1);
 
@@ -52,6 +53,7 @@ class AvailabilityControllerTest {
     private static MockHttpServletRequestBuilder request(String from, String to) {
         return get("/api/v1/availability")
                 .param("dealershipId", DEALER.toString())
+                .param("serviceBayId", BAY.toString())
                 .param("serviceTypeId", SERVICE.toString())
                 .param("vehicleTypeId", VEHICLE.toString())
                 .param("from", from)
@@ -60,8 +62,8 @@ class AvailabilityControllerTest {
 
     @Test
     void returnsDaysWithOffsetSlots() throws Exception {
-        when(service.find(DEALER, SERVICE, VEHICLE, FROM, TO)).thenReturn(new AvailabilityResponse(
-                DEALER, "Hub", SERVICE, "Oil change", VEHICLE, "SUV", "America/New_York", 60, List.of(
+        when(service.find(DEALER, BAY, SERVICE, VEHICLE, FROM, TO)).thenReturn(new AvailabilityResponse(
+                DEALER, "Hub", BAY, "Bay 1", SERVICE, "Oil change", VEHICLE, "SUV", "America/New_York", 60, List.of(
                         new Day(FROM, List.of(new Slot(OffsetDateTime.parse("2026-10-31T07:00-04:00"),
                                 OffsetDateTime.parse("2026-10-31T08:00-04:00")))),
                         new Day(TO, List.of()))));
@@ -72,6 +74,8 @@ class AvailabilityControllerTest {
                 .andExpect(jsonPath("$.serviceTypeId").value(SERVICE.toString()))
                 .andExpect(jsonPath("$.vehicleTypeId").value(VEHICLE.toString()))
                 .andExpect(jsonPath("$.dealershipName").value("Hub"))
+                .andExpect(jsonPath("$.serviceBayId").value(BAY.toString()))
+                .andExpect(jsonPath("$.serviceBayName").value("Bay 1"))
                 .andExpect(jsonPath("$.serviceTypeName").value("Oil change"))
                 .andExpect(jsonPath("$.vehicleTypeName").value("SUV"))
                 .andExpect(jsonPath("$.timezone").value("America/New_York"))
@@ -82,13 +86,12 @@ class AvailabilityControllerTest {
                 .andExpect(jsonPath("$.days[0].slots[0].end").value("2026-10-31T08:00:00-04:00"))
                 .andExpect(jsonPath("$.days[1].date").value("2026-11-01"))
                 .andExpect(jsonPath("$.days[1].slots.length()").value(0))
-                .andExpect(content().string(not(containsString("bay"))))
                 .andExpect(content().string(not(containsString("technician"))));
     }
 
     @Test
     void unknownIdIs404Problem() throws Exception {
-        when(service.find(any(), any(), any(), any(), any()))
+        when(service.find(any(), any(), any(), any(), any(), any()))
                 .thenThrow(new NotFoundException("Dealership", DEALER));
 
         mockMvc.perform(request("2026-10-31", "2026-11-01"))
@@ -102,7 +105,7 @@ class AvailabilityControllerTest {
 
     @Test
     void invalidRangeIs400Problem() throws Exception {
-        when(service.find(eq(DEALER), eq(SERVICE), eq(VEHICLE), any(), any()))
+        when(service.find(eq(DEALER), eq(BAY), eq(SERVICE), eq(VEHICLE), any(), any()))
                 .thenThrow(new InvalidRangeException("'to' is before 'from'"));
 
         mockMvc.perform(request("2026-11-02", "2026-11-01"))
@@ -118,6 +121,7 @@ class AvailabilityControllerTest {
     void missingParamIs400Problem() throws Exception {
         mockMvc.perform(get("/api/v1/availability")
                         .param("dealershipId", DEALER.toString())
+                        .param("serviceBayId", BAY.toString())
                         .param("serviceTypeId", SERVICE.toString())
                         .param("from", "2026-10-31")
                         .param("to", "2026-11-01"))
@@ -126,6 +130,20 @@ class AvailabilityControllerTest {
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.detail").value(containsString("vehicleTypeId")))
                 .andExpect(jsonPath("$.traceId").value(WebSliceTracingConfig.TRACE_ID));
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void missingServiceBayIdIs400Problem() throws Exception {
+        mockMvc.perform(get("/api/v1/availability")
+                        .param("dealershipId", DEALER.toString())
+                        .param("serviceTypeId", SERVICE.toString())
+                        .param("vehicleTypeId", VEHICLE.toString())
+                        .param("from", "2026-10-31")
+                        .param("to", "2026-11-01"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value(containsString("serviceBayId")));
         verifyNoInteractions(service);
     }
 
@@ -142,6 +160,7 @@ class AvailabilityControllerTest {
     void malformedUuidIs400Problem() throws Exception {
         mockMvc.perform(get("/api/v1/availability")
                         .param("dealershipId", "not-a-uuid")
+                        .param("serviceBayId", BAY.toString())
                         .param("serviceTypeId", SERVICE.toString())
                         .param("vehicleTypeId", VEHICLE.toString())
                         .param("from", "2026-10-31")
@@ -154,7 +173,7 @@ class AvailabilityControllerTest {
 
     @Test
     void databaseErrorIs503ProblemWithoutInternals() throws Exception {
-        when(service.find(any(), any(), any(), any(), any()))
+        when(service.find(any(), any(), any(), any(), any(), any()))
                 .thenThrow(new DataAccessResourceFailureException("connection to 10.0.0.5 refused"));
 
         mockMvc.perform(request("2026-10-31", "2026-11-01"))
@@ -169,7 +188,7 @@ class AvailabilityControllerTest {
 
     @Test
     void unexpectedErrorIs500ProblemWithoutInternals() throws Exception {
-        when(service.find(any(), any(), any(), any(), any()))
+        when(service.find(any(), any(), any(), any(), any(), any()))
                 .thenThrow(new IllegalStateException("secret internal state"));
 
         mockMvc.perform(request("2026-10-31", "2026-11-01"))

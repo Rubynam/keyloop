@@ -132,7 +132,7 @@ seeding/seed.sh
 
 ### Manual API testing (Postman)
 
-`GET /api/v1/availability?dealershipId=&serviceTypeId=&vehicleTypeId=&from=&to=` returns free slots per local date
+`GET /api/v1/availability?dealershipId=&serviceBayId=&serviceTypeId=&vehicleTypeId=&from=&to=` returns free slots of the chosen bay per local date
 (`from`/`to` are ISO dates in the dealership's time zone, inclusive, at most 14 days).
 [`postman/`](postman/README.md) has a collection + environment with the seed ids and test scripts:
 
@@ -174,7 +174,7 @@ Both apps send traces over OTLP/HTTP to an in-memory Jaeger (last 100 000 traces
 Smoke check:
 
 ```bash
-curl -s -o /dev/null "localhost:8080/api/v1/availability?dealershipId=…&serviceTypeId=…&vehicleTypeId=…&from=…&to=…"
+curl -s -o /dev/null "localhost:8080/api/v1/availability?dealershipId=…&serviceBayId=…&serviceTypeId=…&vehicleTypeId=…&from=…&to=…"
 # UI → Service server-api → Find Traces: one trace with query and Redis children
 docker compose stop jaeger
 # bookings and availability still answer (export fails in the background, a WARN now and then)
