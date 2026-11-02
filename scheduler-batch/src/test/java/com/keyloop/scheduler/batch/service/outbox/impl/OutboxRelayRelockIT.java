@@ -38,8 +38,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Story Task 2, AC2.1–AC2.3: the work transaction locks the claimed row again by id and
- * claimed try, and skips it when the row is no longer ours. Rows are locked or changed by
- * hand in another transaction, the same shape as {@code rowLockedByAnotherInstanceIsSkipped}.
+ * claimed try, and skips it when the row is no longer ours. A lock held elsewhere is waited
+ * for, not skipped: only the try and state decide. Rows are locked or changed by hand in
+ * another transaction, the same shape as {@code rowLockedByAnotherInstanceIsSkipped}.
  */
 @TestPropertySource(properties = {
         "scheduler.outbox.relay.poll-delay=1h",
@@ -74,36 +75,64 @@ class OutboxRelayRelockIT extends IntegrationTest {
         store.reset();
     }
 
-    /** AC2.1: another connection holds the row lock when TX B starts. */
+    /**
+     * AC2.1: another connection holds the row lock when TX B starts, and lets it go without
+     * a change. This is what a claim scan of another instance leaves behind when it read the
+     * row before our claim committed: TX B waits for it and does the work.
+     */
     @Test
-    void rowLockedElsewhereIsSkippedAndLeftUntouched() throws Exception {
+    void rowLockedElsewhereWithoutAChangeIsWaitedForAndProcessed() throws Exception {
         UUID dealer = UUID.randomUUID();
         UUID id = outbox.insert("AppointmentBooked", payload(dealer, "2030-04-01"));
         OutboxEvent claimed = claim();
-        State afterClaim = outbox.state(id);
-        CountDownLatch holding = new CountDownLatch(1);
-        CountDownLatch done = new CountDownLatch(1);
 
+        holdRowLock(id, null, () -> assertThat(impl.work(claimed)).isTrue());
+
+        assertThat(outbox.state(id).processedAt()).isNotNull();
+        assertThat(redis.opsForValue().get(key(dealer, LocalDate.parse("2030-04-01")))).isEqualTo("1");
+    }
+
+    /** AC2.1: the lock holder takes the next try (lease ended) and commits: TX B waits, then skips. */
+    @Test
+    void rowLockedElsewhereThatTakesTheNextTryIsSkippedAfterTheWait() throws Exception {
+        UUID dealer = UUID.randomUUID();
+        UUID id = outbox.insert("AppointmentBooked", payload(dealer, "2030-04-04"));
+        OutboxEvent claimed = claim();
+
+        try (LogCapture log = LogCapture.of(OutboxRelayServiceImpl.class)) {
+            holdRowLock(id, "attempts = attempts + 1", () -> assertThat(impl.work(claimed)).isTrue());
+
+            assertThat(log.lines()).anySatisfy(line -> assertThat(line).startsWith("WARN ").endsWith(
+                    "Outbox event " + id + " (AppointmentBooked) skipped: another relay instance owns try 1"));
+        }
+        State state = outbox.state(id);
+        assertThat(state.attempts()).isEqualTo(2);
+        assertThat(state.processedAt()).isNull();
+        assertThat(redis.hasKey(key(dealer, LocalDate.parse("2030-04-04")))).isFalse();
+    }
+
+    /**
+     * Locks the row in another transaction, starts {@code work} while the lock is held, then
+     * applies {@code change} (when not null) and commits after a short hold.
+     */
+    private void holdRowLock(UUID id, String change, Runnable work) throws Exception {
+        CountDownLatch holding = new CountDownLatch(1);
         try (ExecutorService other = Executors.newSingleThreadExecutor()) {
             Future<?> instance = other.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(s -> {
                 jdbc.sql("SELECT id FROM outbox_events WHERE id = :id FOR UPDATE").param("id", id)
                         .query(UUID.class).single();
                 holding.countDown();
-                await(done, Duration.ofSeconds(10));
+                // Long enough for work() to reach relock and block on this lock
+                await(new CountDownLatch(1), Duration.ofMillis(RETRY_DELAY_MS));
+                if (change != null) {
+                    jdbc.sql("UPDATE outbox_events SET " + change + " WHERE id = :id").param("id", id).update();
+                }
             }));
             assertThat(holding.await(10, TimeUnit.SECONDS)).isTrue();
 
-            try (LogCapture log = LogCapture.of(OutboxRelayServiceImpl.class)) {
-                assertThat(impl.work(claimed)).isTrue();
-
-                assertThat(log.lines()).anySatisfy(line -> assertThat(line).startsWith("WARN ").endsWith(
-                        "Outbox event " + id + " (AppointmentBooked) skipped: another relay instance owns try 1"));
-            }
-            done.countDown();
+            work.run();
             instance.get(10, TimeUnit.SECONDS);
         }
-        assertThat(outbox.state(id)).isEqualTo(afterClaim);
-        assertThat(redis.hasKey(key(dealer, LocalDate.parse("2030-04-01")))).isFalse();
     }
 
     /** AC2.2 and the matrix row "terminal state changed": the row changed after the claim. */

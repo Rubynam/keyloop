@@ -79,7 +79,7 @@ COMMIT;                            -- the try is counted, even if the JVM dies n
 SELECT id FROM outbox_events
 WHERE id = :id AND attempts = :claimed
   AND processed_at IS NULL AND failed_at IS NULL
-FOR UPDATE SKIP LOCKED;            -- 0 rows → WARN, roll back, next row
+FOR UPDATE;                        -- waits (another claim scan may still hold the row); 0 rows → WARN, roll back, next row
 ```
 
 Then, in TX B:

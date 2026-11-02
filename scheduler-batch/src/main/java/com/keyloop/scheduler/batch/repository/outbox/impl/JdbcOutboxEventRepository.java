@@ -60,12 +60,15 @@ public class JdbcOutboxEventRepository implements OutboxEventRepository {
 
     @Override
     public boolean relock(UUID id, int claimedAttempts) {
+        // No SKIP LOCKED: another instance's lockNextDue can keep a lock on this row after
+        // rejecting it (stale snapshot, re-check failed) until its TX A ends. Wait for that;
+        // the attempts/state check below is what decides ownership.
         return jdbc.sql("""
                         SELECT id
                         FROM outbox_events
                         WHERE id = :id AND attempts = :claimedAttempts
                           AND processed_at IS NULL AND failed_at IS NULL
-                        FOR UPDATE SKIP LOCKED
+                        FOR UPDATE
                         """)
                 .param("id", id)
                 .param("claimedAttempts", claimedAttempts)

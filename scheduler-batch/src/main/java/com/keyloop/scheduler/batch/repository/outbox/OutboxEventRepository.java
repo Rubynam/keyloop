@@ -45,12 +45,14 @@ public interface OutboxEventRepository {
 
     /**
      * Locks the claimed row again at the start of the work transaction, with
-     * {@code FOR UPDATE SKIP LOCKED}. It only succeeds while the row is still ours: same
-     * try, not processed, not failed, not locked by anyone else.
+     * {@code FOR UPDATE}. It waits when another transaction holds the row: a claim scan
+     * of another instance can keep a lock on a row it did not take. It only succeeds
+     * while the row is still ours: same try, not processed, not failed.
      *
      * <pre>
-     * relock(E1, 1)  attempts 1, PENDING, free     →  true  (locked until COMMIT)
-     * relock(E1, 1)  attempts 2, or FAILED, or locked elsewhere  →  false
+     * relock(E1, 1)  attempts 1, PENDING            →  true  (locked until COMMIT)
+     * relock(E1, 1)  locked by another TX A         →  waits, then true
+     * relock(E1, 1)  attempts 2, or PROCESSED/FAILED →  false
      * </pre>
      */
     boolean relock(UUID id, int claimedAttempts);
