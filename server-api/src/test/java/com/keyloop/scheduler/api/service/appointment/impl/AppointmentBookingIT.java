@@ -136,6 +136,34 @@ class AppointmentBookingIT extends IntegrationTest {
     }
 
     @Test
+    void locationOfABookingReadsBackTheSameAppointment() throws Exception {
+        UUID bay = fixtures.bay(dealer, vehicleType);
+        UUID tech = fixtures.technician(dealer, service, vehicleType);
+        HttpResponse<String> booked = book(key(), body(customer, vehicle, dealer, service, local("09:00")));
+        assertThat(booked.statusCode()).isEqualTo(201);
+        String location = booked.headers().firstValue("Location").orElseThrow();
+
+        HttpResponse<String> read = read(location);
+
+        assertThat(read.statusCode()).as(read.body()).isEqualTo(200);
+        JsonNode created = json.readTree(booked.body());
+        JsonNode body = json.readTree(read.body());
+        assertThat(body).isEqualTo(created);
+        assertThat(body.get("serviceBayId").asString()).isEqualTo(bay.toString());
+        assertThat(body.get("technicianId").asString()).isEqualTo(tech.toString());
+        assertThat(body.get("startTime").asString()).isEqualTo(DAY + "T02:00:00Z");
+        assertThat(body.get("endTime").asString()).isEqualTo(DAY + "T03:00:00Z");
+    }
+
+    @Test
+    void unknownAppointmentIdIs404() throws Exception {
+        UUID unknown = UUID.fromString("00000000-0000-7000-8000-000000000000");
+        HttpResponse<String> read = read("/api/v1/appointments/" + unknown);
+
+        assertProblem(read, 404, "Appointment " + unknown + " not found");
+    }
+
+    @Test
     void ac14PayloadHasTheContractFields() throws Exception {
         fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
@@ -505,6 +533,11 @@ class AppointmentBookingIT extends IntegrationTest {
             responses.add(future.get());
         }
         return responses;
+    }
+
+    private HttpResponse<String> read(String path) throws Exception {
+        return http.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + path)).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpResponse<String> book(String key, String body) throws Exception {

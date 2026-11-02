@@ -22,6 +22,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSourceResolvable;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.core.MethodParameter;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpHeaders;
@@ -164,6 +165,14 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             }
         }
         List<Map<String, String>> errors = List.of(error(field, ErrorMessages.UNREADABLE_VALUE));
+        return handleExceptionInternal(ex, invalidRequest(errors), headers, status, request);
+    }
+
+    /** A path or query value of the wrong type ({@code /appointments/abc}): same {@code errors[]} shape. */
+    @Override
+    protected ResponseEntity<Object> handleTypeMismatch(TypeMismatchException ex,
+            HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        List<Map<String, String>> errors = List.of(error(ex.getPropertyName(), ErrorMessages.UNREADABLE_VALUE));
         return handleExceptionInternal(ex, invalidRequest(errors), headers, status, request);
     }
 

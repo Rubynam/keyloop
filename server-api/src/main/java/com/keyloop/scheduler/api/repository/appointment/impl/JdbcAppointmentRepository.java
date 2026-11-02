@@ -66,6 +66,14 @@ public class JdbcAppointmentRepository implements AppointmentRepository {
     }
 
     @Override
+    public Optional<StoredAppointment> findById(UUID appointmentId) {
+        return jdbc.sql(SELECT_STORED + "WHERE id = :id")
+                .param("id", appointmentId)
+                .query((rs, n) -> stored(rs))
+                .optional();
+    }
+
+    @Override
     public Optional<StoredAppointment> findByIdempotencyKey(String idempotencyKey) {
         return jdbc.sql(SELECT_STORED + "WHERE idempotency_key = :key")
                 .param("key", idempotencyKey)

@@ -1,5 +1,8 @@
 package com.keyloop.scheduler.api.service.appointment;
 
+import java.util.UUID;
+
+import com.keyloop.scheduler.api.dto.appointment.AppointmentResponse;
 import com.keyloop.scheduler.api.dto.appointment.BookAppointmentRequest;
 import com.keyloop.scheduler.api.dto.appointment.BookingResult;
 
@@ -30,4 +33,14 @@ public interface AppointmentService {
      * @param idempotencyKey client key; the same key never creates a second appointment
      */
     BookingResult book(String idempotencyKey, BookAppointmentRequest request);
+
+    /**
+     * The stored appointment with this id, in any status.
+     *
+     * <pre>
+     * A1      → AppointmentResponse(A1 {B1, T1, 02:00Z–03:00Z, CONFIRMED})
+     * unknown → NotFoundException("Appointment … not found") → 404
+     * </pre>
+     */
+    AppointmentResponse get(UUID appointmentId);
 }

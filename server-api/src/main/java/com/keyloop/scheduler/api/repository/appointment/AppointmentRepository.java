@@ -18,6 +18,7 @@ import com.keyloop.scheduler.api.model.appointment.VehicleRef;
  * so the service never sees SQL or SQLSTATE. Spec07 §5.1, §7.2.
  *
  * <pre>
+ * findById(A1)                     → Optional[A1]
  * findByIdempotencyKey("k1")       → Optional[A1]
  * findVehicle(V1)                  → Optional[VehicleRef(V1, C1, SUV)]
  * customerExists(C1)               → true
@@ -26,6 +27,15 @@ import com.keyloop.scheduler.api.model.appointment.VehicleRef;
  * </pre>
  */
 public interface AppointmentRepository {
+
+    /**
+     * One appointment by its id, any status; read by {@code GET /appointments/{id}}.
+     *
+     * <pre>
+     * A1 → Optional[A1];  unknown → Optional.empty
+     * </pre>
+     */
+    Optional<StoredAppointment> findById(UUID appointmentId);
 
     /**
      * The appointment stored with this {@code Idempotency-Key}, any status.

@@ -1,6 +1,7 @@
 package com.keyloop.scheduler.api.controller.appointment;
 
 import java.net.URI;
+import java.util.UUID;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -14,6 +15,8 @@ import com.keyloop.scheduler.api.dto.appointment.BookAppointmentRequest;
 import com.keyloop.scheduler.api.dto.appointment.BookingResult;
 import com.keyloop.scheduler.api.service.appointment.AppointmentService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -72,5 +75,20 @@ public class AppointmentController {
             response.header(HeaderNames.IDEMPOTENT_REPLAYED, Boolean.TRUE.toString());
         }
         return response.body(result.appointment());
+    }
+
+    /**
+     * Reads one appointment by id. This is the resource the {@code Location} header of
+     * {@link #book} points to. Any status is returned, cancelled too.
+     *
+     * <pre>
+     * GET /api/v1/appointments/A1      → 200 { id: A1, status: CONFIRMED, serviceBayId: B2, ... }
+     * GET /api/v1/appointments/unknown → 404
+     * GET /api/v1/appointments/abc     → 400  errors[{field: appointmentId}]
+     * </pre>
+     */
+    @GetMapping(ApiPaths.APPOINTMENTS + ApiPaths.APPOINTMENT_ID)
+    public AppointmentResponse get(@PathVariable UUID appointmentId) {
+        return service.get(appointmentId);
     }
 }
