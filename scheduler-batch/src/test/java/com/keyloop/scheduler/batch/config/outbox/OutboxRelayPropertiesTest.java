@@ -1,19 +1,19 @@
 package com.keyloop.scheduler.batch.config.outbox;
 
+import static com.keyloop.scheduler.batch.config.outbox.PropertiesTestSupport.assertFailsNaming;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
+
+import com.keyloop.scheduler.batch.constant.outbox.RelayConstants;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.validation.autoconfigure.ValidationAutoConfiguration;
 import org.springframework.context.annotation.Configuration;
@@ -34,6 +34,10 @@ class OutboxRelayPropertiesTest {
             PREFIX + "max-retries=3",
             PREFIX + "retry-delay=2s",
             PREFIX + "version-key-ttl=2d");
+
+    private static final String NOT_NULL = "must not be null";
+    private static final String LESS_OR_EQUAL = "must be less than or equal to ";
+    private static final String SHORTER_OR_EQUAL = "must be shorter than or equal to ";
 
     private static Locale previousLocale;
 
@@ -106,40 +110,104 @@ class OutboxRelayPropertiesTest {
 
     @Test
     void missingDurationsFail() {
-        Set<String> durationKeys = Set.of(PREFIX + "poll-delay", PREFIX + "retry-delay", PREFIX + "version-key-ttl");
-        List<String> withoutDurations = DEFAULTS.stream()
-                .filter(p -> !durationKeys.contains(p.substring(0, p.indexOf('='))))
-                .toList();
-        runner.withPropertyValues(withoutDurations.toArray(String[]::new)).run(context -> {
+        without("poll-delay", "retry-delay", "version-key-ttl").run(context -> {
             assertFailsNaming(context, "pollDelay");
             assertFailsNaming(context, "retryDelay");
             assertFailsNaming(context, "versionKeyTtl");
         });
     }
 
+    @Test
+    void missingBatchSizeFails() {
+        without("batch-size").run(context -> assertFailsNaming(context, "batchSize", NOT_NULL));
+    }
+
+    @Test
+    void missingMaxRetriesFails() {
+        without("max-retries").run(context -> assertFailsNaming(context, "maxRetries", NOT_NULL));
+    }
+
+    @Test
+    void countsAtMaxStart() {
+        withDefaults("batch-size=" + RelayConstants.MAX_BATCH_SIZE,
+                "max-retries=" + RelayConstants.MAX_RETRIES_LIMIT).run(context -> {
+            assertThat(context).hasNotFailed();
+            OutboxRelayProperties properties = context.getBean(OutboxRelayProperties.class);
+            assertThat(properties.batchSize()).isEqualTo(RelayConstants.MAX_BATCH_SIZE);
+            assertThat(properties.maxRetries()).isEqualTo(RelayConstants.MAX_RETRIES_LIMIT);
+        });
+    }
+
+    @Test
+    void batchSizeOverMaxFails() {
+        withDefaults("batch-size=" + (RelayConstants.MAX_BATCH_SIZE + 1)).run(context ->
+                assertFailsNaming(context, "batchSize", LESS_OR_EQUAL + RelayConstants.MAX_BATCH_SIZE));
+    }
+
+    @Test
+    void maxRetriesOverMaxFails() {
+        withDefaults("max-retries=" + (RelayConstants.MAX_RETRIES_LIMIT + 1)).run(context ->
+                assertFailsNaming(context, "maxRetries", LESS_OR_EQUAL + RelayConstants.MAX_RETRIES_LIMIT));
+    }
+
+    @Test
+    void maxRetriesIntMaxFails() {
+        withDefaults("max-retries=" + Integer.MAX_VALUE).run(context ->
+                assertFailsNaming(context, "maxRetries", LESS_OR_EQUAL + RelayConstants.MAX_RETRIES_LIMIT));
+    }
+
+    @Test
+    void durationsAtMaxStart() {
+        withDefaults(
+                "poll-delay=" + maxPollDelay().toMillis() + "ms",
+                "retry-delay=" + maxRetryDelay().toMillis() + "ms",
+                "version-key-ttl=" + maxVersionKeyTtl().toMillis() + "ms").run(context -> {
+            assertThat(context).hasNotFailed();
+            OutboxRelayProperties properties = context.getBean(OutboxRelayProperties.class);
+            assertThat(properties.pollDelay()).isEqualTo(maxPollDelay());
+            assertThat(properties.retryDelay()).isEqualTo(maxRetryDelay());
+            assertThat(properties.versionKeyTtl()).isEqualTo(maxVersionKeyTtl());
+        });
+    }
+
+    @Test
+    void pollDelayOverMaxFails() {
+        withDefaults("poll-delay=" + (maxPollDelay().toMillis() + 1) + "ms").run(context ->
+                assertFailsNaming(context, "pollDelay", SHORTER_OR_EQUAL + "1 hour"));
+    }
+
+    @Test
+    void retryDelayOverMaxFails() {
+        withDefaults("retry-delay=" + (maxRetryDelay().toMillis() + 1) + "ms").run(context ->
+                assertFailsNaming(context, "retryDelay", SHORTER_OR_EQUAL + "1 hour"));
+    }
+
+    @Test
+    void versionKeyTtlOverMaxFails() {
+        withDefaults("version-key-ttl=" + (maxVersionKeyTtl().toMillis() + 1) + "ms").run(context ->
+                assertFailsNaming(context, "versionKeyTtl", SHORTER_OR_EQUAL + "30 days"));
+    }
+
+    private static Duration maxPollDelay() {
+        return Duration.ofHours(RelayConstants.MAX_POLL_DELAY_HOURS);
+    }
+
+    private static Duration maxRetryDelay() {
+        return Duration.ofHours(RelayConstants.MAX_RETRY_DELAY_HOURS);
+    }
+
+    private static Duration maxVersionKeyTtl() {
+        return Duration.ofDays(RelayConstants.MAX_VERSION_KEY_TTL_DAYS);
+    }
+
     /** Defaults with some values replaced, given as {@code name=value} without the prefix. */
     private ApplicationContextRunner withDefaults(String... overrides) {
-        List<String> values = new ArrayList<>(DEFAULTS);
-        for (String override : overrides) {
-            values.add(PREFIX + override);
-        }
-        return runner.withPropertyValues(values.toArray(String[]::new));
+        return PropertiesTestSupport.withDefaults(runner, PREFIX, DEFAULTS, overrides);
     }
 
-    private static void assertFailsNaming(AssertableApplicationContext context, String... texts) {
-        assertThat(context).hasFailed();
-        String message = fullMessage(context.getStartupFailure());
-        for (String text : texts) {
-            assertThat(message).contains(text);
-        }
-    }
-
-    private static String fullMessage(Throwable failure) {
-        StringBuilder text = new StringBuilder();
-        for (Throwable t = failure; t != null; t = t.getCause()) {
-            text.append(t).append('\n');
-        }
-        return text.toString();
+    /** Defaults with the given keys (without the prefix) removed. */
+    private ApplicationContextRunner without(String... keys) {
+        return PropertiesTestSupport.without(runner, PREFIX, DEFAULTS, keys);
     }
 
     @Configuration(proxyBeanMethods = false)

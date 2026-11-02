@@ -5,8 +5,10 @@ import lombok.NoArgsConstructor;
 
 /**
  * Fixed values of the outbox relay: the Redis version key, the payload fields it reads,
- * the invalid-payload reasons and the operator log formats. Operators and tests read
- * this text, so do not change a character. Spec04 §4.4, §4.6.
+ * the invalid-payload reasons, the operator log formats and the upper limits of the
+ * relay settings. Operators and tests read the key, field and log text, so do not
+ * change a character of it. The limits are guard rails against typos and overflow;
+ * they may be changed in code. Spec04 §4.4, §4.6.
  *
  * <pre>
  * {"dealershipId":"D1","dates":["2026-11-05"]}
@@ -24,6 +26,17 @@ public final class RelayConstants {
 
     public static final String RELAY_ENABLED_PROPERTY = "scheduler.outbox.relay.enabled";
     public static final String RELAY_POLL_DELAY = "${scheduler.outbox.relay.poll-delay}";
+
+    /** Highest {@code batch-size}: 10× the shipped 100; a bigger tick holds the claim too long. */
+    public static final int MAX_BATCH_SIZE = 1000;
+    /** Highest {@code max-retries}: stops {@code maxRetries + 1} overflow; 100 × 2 s is about 3 min. */
+    public static final int MAX_RETRIES_LIMIT = 100;
+    /** Highest {@code poll-delay} in hours; a longer wait means "off", which {@code enabled} does. */
+    public static final int MAX_POLL_DELAY_HOURS = 1;
+    /** Highest {@code retry-delay} in hours; keeps {@code Duration.toMillis()} far from overflow. */
+    public static final int MAX_RETRY_DELAY_HOURS = 1;
+    /** Highest {@code version-key-ttl} in days: 15× the shipped 2d. */
+    public static final int MAX_VERSION_KEY_TTL_DAYS = 30;
 
     public static final String FIELD_DEALERSHIP_ID = "dealershipId";
     public static final String FIELD_DATES = "dates";
