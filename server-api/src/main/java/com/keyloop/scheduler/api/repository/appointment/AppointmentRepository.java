@@ -72,7 +72,7 @@ public interface AppointmentRepository {
      * </pre>
      *
      * @throws SlotTakenException               an exclusion constraint refused it (bay, technician or vehicle)
-     * @throws ResourceGoneException            a bay / technician foreign key refused it
+     * @throws ResourceGoneException            a bay / technician foreign key refused it, or one is inactive
      * @throws DuplicateIdempotencyKeyException another row already has this key
      * @throws VehicleOwnerMismatchException    the vehicle changed owner after the check
      */

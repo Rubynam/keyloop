@@ -8,6 +8,7 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.keyloop.scheduler.api.constant.appointment.AppointmentConstants;
 import com.keyloop.scheduler.api.exception.appointment.DuplicateIdempotencyKeyException;
 import com.keyloop.scheduler.api.exception.appointment.ResourceGoneException;
 import com.keyloop.scheduler.api.exception.appointment.SlotTakenException;
@@ -32,6 +33,7 @@ import org.springframework.stereotype.Repository;
  * <pre>
  * 23P01 ex_appointments_bay / _technician / _vehicle  →  SlotTakenException(BAY / TECHNICIAN / VEHICLE)
  * 23503 fk_appointments_bay_* / fk_appointments_tech_* →  ResourceGoneException
+ * 0 rows: bay or technician no longer active          →  ResourceGoneException
  * 23503 fk_appointments_vehicle_owner                 →  VehicleOwnerMismatchException
  * 23505 appointments_idempotency_key_key              →  DuplicateIdempotencyKeyException
  * 40P01 deadlock (two bookings wait on each other)    →  SlotTakenException(PAIR)
@@ -107,6 +109,23 @@ public class JdbcAppointmentRepository implements AppointmentRepository {
                 .single();
     }
 
+    /**
+     * Writes the appointment only if its bay and technician are still {@code active}. The
+     * candidate read does not lock, so a resource can be switched off before this insert;
+     * no FK covers {@code active}, so the statement checks it itself.
+     *
+     * <p>{@code FOR SHARE} locks the two rows until commit. A deactivation that is not yet
+     * committed makes us wait, then PostgreSQL re-checks {@code active} on the new row:
+     * zero rows. A deactivation that comes later waits for our commit. So no appointment
+     * commits on a resource whose deactivation committed first. Not guaranteed: a booking
+     * that committed before the deactivation stays (cancelling it is a business step). A
+     * deactivation that locks both rows in the other order can deadlock with us: 40P01.
+     *
+     * <pre>
+     * bay B2 active,   tech T2 active    →  A1
+     * bay B2 inactive (or T2 inactive)   →  0 rows  →  ResourceGoneException  next pair
+     * </pre>
+     */
     @Override
     public StoredAppointment insert(NewAppointment a) {
         try {
@@ -114,9 +133,13 @@ public class JdbcAppointmentRepository implements AppointmentRepository {
                             INSERT INTO appointments (customer_id, vehicle_id, dealership_id, service_type_id,
                                                       technician_id, service_bay_id, vehicle_type_id,
                                                       start_time, end_time, status, idempotency_key)
-                            VALUES (:customerId, :vehicleId, :dealershipId, :serviceTypeId,
-                                    :technicianId, :serviceBayId, :vehicleTypeId,
-                                    :start, :end, :status, :key)
+                            SELECT :customerId, :vehicleId, :dealershipId, :serviceTypeId,
+                                   t.id, b.id, :vehicleTypeId,
+                                   :start, :end, :status, :key
+                            FROM service_bays b, technicians t
+                            WHERE b.id = :serviceBayId AND b.active
+                              AND t.id = :technicianId AND t.active
+                            FOR SHARE OF b, t
                             RETURNING id
                             """)
                     .param("customerId", a.customerId())
@@ -131,7 +154,8 @@ public class JdbcAppointmentRepository implements AppointmentRepository {
                     .param("status", AppointmentStatus.CONFIRMED.name())
                     .param("key", a.idempotencyKey())
                     .query(UUID.class)
-                    .single();
+                    .optional()
+                    .orElseThrow(() -> new ResourceGoneException(AppointmentConstants.INACTIVE_RESOURCE, null));
             return new StoredAppointment(id, a.customerId(), a.vehicleId(), a.dealershipId(), a.serviceTypeId(),
                     a.serviceBayId(), a.technicianId(), a.start(), a.end(), AppointmentStatus.CONFIRMED);
         } catch (DataAccessException e) {
