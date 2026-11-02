@@ -1,0 +1,63 @@
+- id: "1"
+  title: Data tier compose with Postgres and Redis replication
+  description: >-
+    Delivers CAP-1, CAP-2 and CAP-8: four data services, replica bootstrap and
+    DB_HOSTS/REDIS_NODES in every consumer, with apps still on primary/master only.
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Follow spine AD-1, AD-8, AD-9. Touch docker-compose*.yml, .env.example,
+    infra/postgres (init script + replica-entrypoint.sh), infra/k8s env,
+    loadtest/simulator, scripts/run-app.sh and both application.yml
+    (targetServerType=primary, masterreplica nodes with read-from upstream).
+    No replica DataSource or replica Redis template yet. Document the one-time
+    `docker compose down -v` in README.
+- id: "2"
+  title: Relay replica-visibility gate before version bump
+  description: >-
+    Delivers CAP-4: the outbox relay bumps avail:ver only after the outbox row
+    is visible on the Postgres replica, per AD-5.
+  spec_checkpoint: true
+  invoke_dev_with: >-
+    Follow spine AD-3 (batch replica DataSource, targetServerType=secondary,
+    defaultCandidate=false), AD-4 (ARC-09 in scheduler-batch ArchitectureTest)
+    and AD-5 (OutboxReplicaProbe/JdbcOutboxReplicaProbe, gate between TX A and
+    TX B outside any transaction, pg_is_in_recovery check, gateTimeout and
+    gatePollInterval in OutboxRelayProperties validated at startup, timeout uses
+    the Spec04 retry/FAILED path). Must land before story 3.
+- id: "3"
+  title: Postgres read/write split in server-api
+  description: >-
+    Delivers CAP-3 and the Postgres half of CAP-6: availability reads go to the
+    replica through a replica-bound repository bean; booking stays on primary.
+  spec_checkpoint: true
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Follow spine AD-3, AD-4, AD-7. Two JdbcAvailabilityRepository beans
+    (primaryAvailabilityRepository, replicaAvailabilityRepository); only
+    AvailabilityServiceImpl gets the replica one, AppointmentServiceImpl and
+    CandidateSelectorImpl get primary via @Qualifier. ARC-09 in server-api
+    ArchitectureTest. Readiness = primary db only; dbReplica outside readiness;
+    integration test stops replica and asserts readiness UP. Bean names in a
+    DataSourceNames constants class.
+- id: "4"
+  title: Redis replica reads routed by key family
+  description: >-
+    Delivers CAP-5 and the Redis half of CAP-6: only the first slot-list read
+    uses the Redis replica; versions, locks, writes, re-read and polling stay on master.
+  spec_checkpoint: true
+  invoke_dev_with: >-
+    Follow spine AD-3 (replica factory from RedisProperties, same 1s timeout,
+    defaultCandidate=false, server-api only), AD-6 and AD-7 (redisReplica health
+    outside readiness). Replica MASTERDOWN/stale error counts as a cache miss,
+    not Redis off. One unit test per RedisAvailabilityCache call site asserting
+    which template it uses.
+- id: "5"
+  title: Manual failover scripts and runbook
+  description: >-
+    Delivers CAP-7: scripted Postgres and Redis failover with no split-brain,
+    rehearsed under the book-ramp load test.
+  invoke_dev_with: >-
+    Follow spine AD-2. scripts/db-failover.sh and scripts/redis-failover.sh:
+    stop old primary, promote, flip PG_PRIMARY/REDIS_MASTER in .env, delete old
+    primary volume, compose up re-seeds it as replica; Redis adds FLUSHALL and
+    app restarts. Runbook in docs/ with the rehearsal steps and results.

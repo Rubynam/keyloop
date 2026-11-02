@@ -14,7 +14,8 @@ DEBUG_PORT=${DEBUG_PORT:-5006}
 
 # The batch reads domain tables but does not own them: the schema comes from server-api's Flyway
 before_start() {
-    if ! docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+    # PG_PRIMARY comes from .env (sourced by run_app)
+    if ! docker compose exec -T "${PG_PRIMARY:-postgres-1}" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
         "SELECT 1 FROM flyway_schema_history LIMIT 1" >/dev/null 2>&1; then
         echo "No Flyway schema yet: start server-api once first (scripts/run-server-api.sh)" >&2
         exit 1

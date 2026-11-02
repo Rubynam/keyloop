@@ -39,7 +39,44 @@ docker compose up -d --scale server-api=3 --no-recreate server-api   # nginx pic
 docker compose up -d --scale server-api=2 --no-recreate server-api
 ```
 
-Networks: `edge` (nginx only, published) · `lb-net` (internal, nginx ↔ server-api) · `data-net` (apps ↔ postgres/redis; nginx is not on it) · `obs-net` (apps → jaeger).
+Networks: `edge` (nginx only, published) · `lb-net` (internal, nginx ↔ server-api) · `data-net` (apps ↔ data nodes; nginx is not on it) · `obs-net` (apps → jaeger).
+
+### Data tier: Postgres and Redis replication
+
+Two nodes per store, same definition each. Which node is primary/master comes from `.env`, never from the service name.
+
+| Service | Role (default `.env`) | Host port | Data |
+|---|---|---|---|
+| `postgres-1` | primary (`PG_PRIMARY=postgres-1`) | 5432 (`POSTGRES_1_PORT`) | volume `pg-data-1` |
+| `postgres-2` | async streaming replica, slot `replica_slot` | 5433 (`POSTGRES_2_PORT`) | volume `pg-data-2` |
+| `redis-1` | master (`REDIS_MASTER=redis-1`) | 6379 (`REDIS_1_PORT`) | none (cache only) |
+| `redis-2` | replica, refuses reads while its master link is down | 6380 (`REDIS_2_PORT`) | none |
+
+```
+postgres-1 (primary) ──WAL stream, slot replica_slot──► postgres-2 (standby, read-only)
+redis-1    (master)  ──replication───────────────────► redis-2    (replica, read-only)
+apps: DB_HOSTS=postgres-1:5432,postgres-2:5432   REDIS_NODES=redis-1:6379,redis-2:6379
+      → JDBC targetServerType=primary, Lettuce read-from upstream: all traffic on the writable node
+```
+
+- A replica with an empty volume copies the primary (`pg_basebackup`) on start; with data it starts as a standby.
+- Healthchecks are role-aware: a node is unhealthy when its role does not match `.env`.
+- Data services have no `restart:` policy on purpose (an auto-restarted old primary would accept writes).
+- Shell tools target `${PG_PRIMARY:-postgres-1}` / `${REDIS_MASTER:-redis-1}`.
+- `scripts/verify-data-tier.sh` checks the replication matrix on a running stack (PASS/FAIL per row); `--destructive` also restarts and re-seeds the Postgres replica.
+
+```bash
+docker compose exec -T "${PG_PRIMARY:-postgres-1}" psql -U scheduler -d scheduler -tAc \
+  "select state, slot_name from pg_stat_replication join pg_replication_slots on active_pid = pid"   # streaming|replica_slot
+docker compose exec -T "${REDIS_MASTER:-redis-1}" redis-cli INFO replication | grep connected_slaves                   # connected_slaves:1
+```
+
+**One-time migration** from the single-node stack: the old `pg-data` volume would never run the replication init, and the old `postgres`/`redis` containers keep host ports 5432/6379.
+
+- Already pulled this version: `docker compose down -v --remove-orphans`, then `docker volume rm keyloop-scheduler_pg-data keyloop-scheduler_redis-data` (the old volumes are no longer in the compose file).
+- Still on the old checkout: `docker compose down -v` there, then pull.
+
+Then `docker compose up -d --build --wait --remove-orphans` and re-seed (`seeding/seed.sh`).
 
 ### Run one app on its own
 
@@ -51,14 +88,14 @@ docker compose up -d --build scheduler-batch   # waits for server-api: it owns t
 ### Run from the IDE / Gradle against the Docker infra
 
 ```bash
-docker compose up -d postgres redis
+docker compose up -d --wait postgres-1 postgres-2 redis-1 redis-2
 ./gradlew :server-api:bootRun
 ./gradlew :scheduler-batch:bootRun
 ```
 
 ### Run / debug one app on the host (scripts)
 
-Each script starts postgres + redis in Docker, builds the module's jar and runs it on the host JDK 25.
+Each script starts the data nodes (`postgres-1/2`, `redis-1/2`) in Docker, points the app at all of them (`DB_HOSTS`, `REDIS_NODES` with host ports), builds the module's jar and runs it on the host JDK 25.
 `--debug` opens a JDWP port for IntelliJ; `--suspend` makes the JVM wait for the debugger.
 
 | Script | App port | Debug port | Note |
@@ -115,7 +152,7 @@ Or import both files into Postman and run the collection with the *keyloop local
 docker compose -f docker-compose.yml -f docker-compose.loadtest.yml run --rm --no-deps --entrypoint python locust tools/check_scenarios.py
 docker compose -f docker-compose.yml -f docker-compose.loadtest.yml run --rm locust          # smoke
 LOADTEST_PROFILE=load LOCUST_USERS=50 LOCUST_RUN_TIME=10m docker compose -f docker-compose.yml -f docker-compose.loadtest.yml run --rm locust
-docker compose exec -T postgres psql -U scheduler -d scheduler < loadtest/verify/invariants.sql   # 0 rows expected
+docker compose exec -T "${PG_PRIMARY:-postgres-1}" psql -U scheduler -d scheduler < loadtest/verify/invariants.sql   # 0 rows expected
 ```
 
 ### Tracing (Jaeger)
@@ -153,5 +190,5 @@ docker compose start jaeger
 ### Reset all data
 
 ```bash
-docker compose down -v
+docker compose down -v   # removes pg-data-1 and pg-data-2; both nodes bootstrap again on the next up
 ```
