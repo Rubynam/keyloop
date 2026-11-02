@@ -24,8 +24,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * CLAUDE.md §1 rules as tests, on main classes only (Spec05 §7, ARC-01…08). A change
- * that breaks the layering fails the build instead of waiting for a review.
+ * CLAUDE.md §1 rules as tests, on main classes only (Spec05 §7 and tracing spine AD-10,
+ * ARC-01…10). A change that breaks the layering fails the build instead of waiting for a review.
  *
  * <pre>
  * Controller (controller, schedule, job) ──► Service ──► Persistence (repository, cache, store)
@@ -90,7 +90,9 @@ class ArchitectureTest {
     /** ARC-05: a feature package of a port layer holds interfaces only; classes go to impl/. */
     @ArchTest
     static final ArchRule portsAreInterfaces = classes()
-            .that().resideInAnyPackage("..service.*", "..repository.*", "..cache.*", "..store.*")
+            .that().resideInAnyPackage("..service.*", "..repository.*", "..cache.*", "..store.*",
+                    // BASE-anchored: "..tracing.*" would also match config.tracing (classes, by design)
+                    BASE + ".tracing.*")
             .and().areTopLevelClasses()
             .should().beInterfaces();
 
@@ -127,5 +129,21 @@ class ArchitectureTest {
                     BASE + ".config..",
                     BASE + ".web..",
                     BASE + ".schedule..",
-                    BASE + ".job..");
+                    BASE + ".job..",
+                    BASE + ".tracing..");
+
+    /**
+     * ARC-09: Micrometer tracing / observation types only in tracing implementations and config.
+     * Everything else gets spans from framework instrumentation or through a tracing port.
+     */
+    @ArchTest
+    static final ArchRule tracingApiOnlyInTracingImplementations = noClasses()
+            .that().resideOutsideOfPackages("..tracing..impl..", "..config..")
+            .should().dependOnClassesThat().resideInAnyPackage("io.micrometer.tracing..", "io.micrometer.observation..");
+
+    /** ARC-10: tracing ports are called by service implementations only (never a controller or repository). */
+    @ArchTest
+    static final ArchRule tracingPortsOnlyFromServiceImplementations = noClasses()
+            .that().resideOutsideOfPackages("..service..impl..", BASE + ".tracing..")
+            .should().dependOnClassesThat().resideInAPackage(BASE + ".tracing..");
 }

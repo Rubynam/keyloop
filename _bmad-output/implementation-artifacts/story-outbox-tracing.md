@@ -1,7 +1,8 @@
 # Story — Trace a booking through the outbox relay in Jaeger (operability phase 2)
 
-Status: draft (needs: booking story merged for Task 2, Task 1 spike result)
+Status: draft (needs: booking story merged for Task 2, story-tracing-baseline done)
 Owner: Winston (Architect) · Date: 2026-11-01
+Spine: `planning-artifacts/architecture/architecture-keyloop-tracing-2026-11-01/ARCHITECTURE-SPINE.md` — AD-1 (spans are Observations), AD-7 (names in `TraceAttributes`), AD-9 (`trace_parent` only via `Propagator`, written only when sampled), AD-10 (ArchUnit rules already added by the baseline). Where this story disagrees, the spine wins.
 Sources: `story-outbox-relay.md` §11.5, DLD §12 (`12-observability.mermaid`), ROADMAP:150, Spec04 §4, CLAUDE.md §1–§4
 Facts checked on branch `refactor/spec05-pr2-pr5`: Spring Boot 4.1.2, no tracing dependency yet, no Jaeger service in `docker-compose.yml`, log pattern has `[correlationId]` only (`common-logging/log4j2-spring.xml:8`), outbox migrations end at V4.
 
@@ -35,28 +36,9 @@ Trace A (server-api, POST /api/v1/appointments)          Trace B (scheduler-batc
 
 ## 3. Tasks
 
-### Task 1 — Tracing baseline in both apps (spike first, timebox 1 day)
+### Task 1 — Tracing baseline in both apps → moved
 
-Nothing exists yet. This task makes HTTP, JDBC and Redis spans reach Jaeger from both apps.
-
-- `docker-compose.yml`: add a Jaeger all-in-one service (pinned image version, OTLP on 4317/4318, UI on 16686), on the same network as the apps.
-- Both apps: add the Spring Boot 4 OpenTelemetry starter and OTLP exporter from the Boot BOM. **Spike:** confirm the exact starter and property names for Boot 4.1 (they changed between Boot 3 and 4), and which JDBC and Lettuce (Redis) instrumentation gives spans. Write the result into this story before Task 3 starts.
-- `application.yml` (both apps), no literals in code (CLAUDE.md §3):
-
-```yaml
-management:
-  tracing:
-    sampling:
-      probability: 1.0        # local; production value decided at deploy time (§6)
-  # OTLP endpoint property: name from the spike, value per environment
-```
-
-- `common-logging/log4j2-spring.xml`: add `%X{traceId}` and `%X{spanId}` next to `%X{correlationId}`. Keep `correlationId` (nginx `X-Request-Id`, `RequestIdFilter`); it and `traceId` answer different questions.
-
-**Acceptance criteria**
-- AC1.1 Given the stack is up, when a client calls `GET /api/v1/availability`, then Jaeger shows one trace with the HTTP span and its PostgreSQL and Redis child spans.
-- AC1.2 Given Jaeger is down, when requests run, then they succeed with no extra latency (the exporter batches and drops; it never blocks a request), and at most one WARN per minute is logged.
-- AC1.3 Given a request, then every log line it writes has the same `traceId` as its Jaeger trace.
+Done by [`story-tracing-baseline.md`](story-tracing-baseline.md): Jaeger 2.20.0, `spring-boot-starter-opentelemetry`, JDBC/Redis spans, `traceId` in logs and errors, no orphan relay spans. Naming and port rules for Tasks 2–3: tracing spine AD-3, AD-7.
 
 ### Task 2 — Store the trace context in the outbox row (server-api)
 
@@ -148,6 +130,6 @@ CLAUDE.md                                                   + tracing/ in the la
 ## 7. Definition of done
 
 - AC1.x, AC2.x, AC3.x pass (Task 4); the compose smoke check is written in the README.
-- `ArchitectureTest` green, including the new `tracing/` port rule.
+- `ArchitectureTest` green (rules ARC-09/10 come from story-tracing-baseline; this story adds classes only).
 - `story-outbox-relay.md` §11.6: Operability moves to 8/10.
 - T1 decided for production, or written down as a deploy-time decision.

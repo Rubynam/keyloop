@@ -46,6 +46,16 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-07-book-appointment.md`
   summary: Load-test case BK-01 expects a `traceId` field on the 409 ProblemDetail, but the API does not emit one, so BK-01 fails on every 409.
   evidence: Assertion `{"path": "traceId", "exists": true}` already in `loadtest/expected/30-booking.json:29` at baseline 251a8b0; adding `traceId` belongs to the tracing work (story-outbox-tracing / Spec06), not Spec07.
+  status: closed 2026-11-02 by `spec-tracing-baseline.md` — every ProblemDetail carries `traceId` (ApiExceptionHandler, spine AD-4); proven by server-api TracingIT AC4. Load-test rerun not done in that change.
+- source_spec: `_bmad-output/implementation-artifacts/spec-tracing-baseline.md`
+  summary: Move the fail-open span event of `RedisAvailabilityCache` behind a port (or drop it) and remove its exception from ArchitectureTest ARC-09.
+  evidence: The cache impl uses `ObservationRegistry` directly since Spec05 PR2 (tested by AvailabilityFailOpenIT); spine AD-10 allows Micrometer types only in tracing impl, config and web/TraceIds, and ARC-10 lets only services call tracing ports, so the fix needs a design choice.
+- source_spec: `_bmad-output/implementation-artifacts/spec-tracing-baseline.md`
+  summary: Rerun load-test BK-01 against the compose stack to confirm the 409 body `traceId` assertion now passes (story DoD).
+  evidence: BK-01 was closed on the server-api TracingIT AC4 proof only; no Locust run was made in that change.
+- source_spec: `_bmad-output/implementation-artifacts/spec-tracing-baseline.md`
+  summary: Add a server-api test that creates a parent-less JDBC `query` span and proves `RootSpanExportingPredicate` drops it.
+  evidence: server-api AC5 cannot fail on the JDBC branch today: health uses `Connection.isValid` (no QUERY span) and no other non-request SQL exists. Add when one appears.
 - source_spec: none
   summary: Outbox relay Task 6 (OP3) — seed a new `avail:ver:{dealershipId}:{date}` key with Redis `TIME` via `bump-version.lua` so a restarted counter never repeats an old version.
   evidence: Split from story-outbox-relay on 2026-11-01; independently shippable (only changes the bump script + AC6.x tests), not needed for the claim/relock correctness fix.

@@ -23,6 +23,7 @@ import com.keyloop.scheduler.api.exception.appointment.OffSlotGridException;
 import com.keyloop.scheduler.api.model.AppointmentStatus;
 import com.keyloop.scheduler.api.service.appointment.AppointmentService;
 import com.keyloop.scheduler.api.support.MutableClock;
+import com.keyloop.scheduler.api.support.WebSliceTracingConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -39,7 +40,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 
 /** Spec07 AC1, AC2, AC9: the edge contract, no database. */
 @WebMvcTest(AppointmentController.class)
-@Import({ValidationClockConfig.class, AppointmentControllerTest.ClockStub.class})
+@Import({WebSliceTracingConfig.class, ValidationClockConfig.class, AppointmentControllerTest.ClockStub.class})
 class AppointmentControllerTest {
 
     private static final Instant NOW = Instant.parse("2026-11-01T00:00:00Z");

@@ -10,6 +10,9 @@ proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
 proxy_set_header X-Forwarded-Proto $scheme;
 proxy_set_header X-Forwarded-Port  $server_port;
 proxy_set_header X-Request-Id      $req_id;
+# Every trace starts at server-api: a client cannot force sampling or join a trace (spine AD-8)
+proxy_set_header traceparent       "";
+proxy_set_header tracestate        "";
 
 # Docker DNS lists a replica before Spring is listening. A refused connection was never
 # sent, so it is retried on another replica (even POST). Requests that reached a replica

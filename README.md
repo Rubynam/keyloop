@@ -39,7 +39,7 @@ docker compose up -d --scale server-api=3 --no-recreate server-api   # nginx pic
 docker compose up -d --scale server-api=2 --no-recreate server-api
 ```
 
-Networks: `edge` (nginx only, published) · `lb-net` (internal, nginx ↔ server-api) · `data-net` (apps ↔ data nodes; nginx is not on it).
+Networks: `edge` (nginx only, published) · `lb-net` (internal, nginx ↔ server-api) · `data-net` (apps ↔ data nodes; nginx is not on it) · `obs-net` (apps → jaeger).
 
 ### Data tier: Postgres and Redis replication
 
@@ -153,6 +153,32 @@ docker compose -f docker-compose.yml -f docker-compose.loadtest.yml run --rm --n
 docker compose -f docker-compose.yml -f docker-compose.loadtest.yml run --rm locust          # smoke
 LOADTEST_PROFILE=load LOCUST_USERS=50 LOCUST_RUN_TIME=10m docker compose -f docker-compose.yml -f docker-compose.loadtest.yml run --rm locust
 docker compose exec -T "${PG_PRIMARY:-postgres-1}" psql -U scheduler -d scheduler < loadtest/verify/invariants.sql   # 0 rows expected
+```
+
+### Tracing (Jaeger)
+
+Both apps send traces over OTLP/HTTP to an in-memory Jaeger (last 100 000 traces; lost on restart). UI: <http://localhost:16686>.
+
+- A request is one `server-api` trace: `http get /api/v1/…` → `query` (one per SQL statement) and Redis command spans (`get`, `mget`, `evalsha`, …).
+- A heartbeat run is one `scheduler-batch` trace: `task jobScheduler.runHeartbeat` → `spring.batch.job` → `spring.batch.step` → SQL / Redis.
+- Not traced on purpose: actuator calls, relay ticks (every 500 ms; outbox business spans come with story-outbox-tracing), and SQL / Redis calls outside a request or job.
+- Find a trace by id: every log line has `[correlationId] [traceId,spanId]`, and every error body has `"traceId"`. Paste it into the UI search box (top bar).
+- nginx drops any client `traceparent`, so every trace starts at server-api.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `TRACING_OTLP_ENDPOINT` | `http://jaeger:4318/v1/traces` (compose), `http://localhost:4318/v1/traces` (IDE) | where spans go |
+| `TRACING_SAMPLING_PROBABILITY` | `1.0` | share of traces kept, both apps; lower it for load tests and prod |
+| `JAEGER_UI_PORT` / `JAEGER_OTLP_PORT` | `16686` / `4318` | host ports |
+
+Smoke check:
+
+```bash
+curl -s -o /dev/null "localhost:8080/api/v1/availability?dealershipId=…&serviceTypeId=…&vehicleTypeId=…&from=…&to=…"
+# UI → Service server-api → Find Traces: one trace with query and Redis children
+docker compose stop jaeger
+# bookings and availability still answer (export fails in the background, a WARN now and then)
+docker compose start jaeger
 ```
 
 ### Build and test

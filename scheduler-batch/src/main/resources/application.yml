@@ -53,7 +53,28 @@ scheduler:
       failed-retention: 30d
       batch-metadata-retention: 7d
 
+# One span per SQL statement; no connection / result-set spans (datasource-micrometer)
+jdbc:
+  includes: QUERY
+
 management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}   # Boot default is 0.1; prod sets it at deploy (spine AD-8)
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${TRACING_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+  # Tracing only (DLD §12, spine Deferred): the starter would also push OTLP metrics and logs
+  otlp:
+    metrics:
+      export:
+        enabled: false
+  logging:
+    export:
+      otlp:
+        enabled: false
   endpoints:
     web:
       exposure:
