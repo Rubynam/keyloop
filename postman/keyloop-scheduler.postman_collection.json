@@ -950,7 +950,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"{{bookingStart}}\"\n}",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\",\n  \"startTime\": \"{{bookingStart}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -968,7 +968,7 @@
                 "appointments"
               ]
             },
-            "description": "Random future slot on the 15-min grid at the hub. Saves the appointment id for the replay."
+            "description": "Random future slot on the 15-min grid in hub Bay 01 (the client picks the bay; the server picks the technician). Saves the appointment id for the replay."
           },
           "event": [
             {
@@ -1001,7 +1001,7 @@
                   "    pm.expect(pm.response.headers.get(\"Location\")).to.eql(`/api/v1/appointments/${body.id}`);",
                   "    pm.expect(pm.response.headers.has(\"Idempotent-Replayed\")).to.be.false;",
                   "    pm.expect(body.status).to.eql(\"CONFIRMED\");",
-                  "    pm.expect(body.serviceBayId).to.be.a(\"string\");",
+                  "    pm.expect(body.serviceBayId).to.eql(pm.environment.get(\"hubBayId\"));",
                   "    pm.expect(body.technicianId).to.be.a(\"string\");",
                   "    pm.expect(body.vehicleId).to.eql(pm.environment.get(\"bookingVehicleId\"));",
                   "});",
@@ -1035,7 +1035,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"{{bookingStart}}\"\n}",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\",\n  \"startTime\": \"{{bookingStart}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1091,7 +1091,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"{{laterStart}}\"\n}",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\",\n  \"startTime\": \"{{laterStart}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1160,7 +1160,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"{{bookingStart}}\"\n}",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\",\n  \"startTime\": \"{{bookingStart}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1199,6 +1199,65 @@
           ]
         },
         {
+          "name": "400 - missing serviceBayId",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "The client must choose the bay: no serviceBayId → 400 on that field."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.eql(\"Invalid request\");",
+                  "    pm.expect(body.errors.map(e => e.field)).to.include(\"serviceBayId\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "400 - missing startTime",
           "request": {
             "method": "POST",
@@ -1218,7 +1277,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\"\n}",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1277,7 +1336,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2020-01-06T09:00:00+07:00\"\n}",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\",\n  \"startTime\": \"2020-01-06T09:00:00+07:00\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1336,7 +1395,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:00:00\"\n}",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\",\n  \"startTime\": \"2030-01-07T09:00:00\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1395,7 +1454,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"not-a-uuid\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"not-a-uuid\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1450,7 +1509,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1509,7 +1568,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{noVehicleCustomerId}}\",\n  \"vehicleId\": \"{{hybridVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
+              "raw": "{\n  \"customerId\": \"{{noVehicleCustomerId}}\",\n  \"vehicleId\": \"{{hybridVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1567,7 +1626,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{$guid}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{$guid}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1606,6 +1665,64 @@
           ]
         },
         {
+          "name": "404 - bay of another dealership",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{riversideBayId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "appointments"
+              ]
+            },
+            "description": "Riverside's bay sent to the hub: the bay must belong to the dealership."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 ProblemDetail\", () => {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(404);",
+                  "});",
+                  "pm.test(\"names the service bay\", () => pm.expect(pm.response.json().detail).to.eql(`Service bay ${pm.environment.get(\"riversideBayId\")} not found`));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "422 - off the slot grid (09:07)",
           "request": {
             "method": "POST",
@@ -1625,7 +1742,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:07:00+07:00\"\n}",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\",\n  \"startTime\": \"2030-01-07T09:07:00+07:00\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1683,7 +1800,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T20:00:00+07:00\"\n}",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\",\n  \"startTime\": \"2030-01-07T20:00:00+07:00\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1741,7 +1858,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T16:30:00+07:00\"\n}",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\",\n  \"startTime\": \"2030-01-07T16:30:00+07:00\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1799,7 +1916,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{hydrogenCustomerId}}\",\n  \"vehicleId\": \"{{hydrogenVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
+              "raw": "{\n  \"customerId\": \"{{hydrogenCustomerId}}\",\n  \"vehicleId\": \"{{hydrogenVehicleId}}\",\n  \"dealershipId\": \"{{hubDealershipId}}\",\n  \"serviceTypeId\": \"{{oilChangeServiceTypeId}}\",\n  \"serviceBayId\": \"{{hubBayId}}\",\n  \"startTime\": \"2030-01-07T09:00:00+07:00\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1857,7 +1974,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{kioskDealershipId}}\",\n  \"serviceTypeId\": \"{{tyreRotationServiceTypeId}}\",\n  \"startTime\": \"2026-11-04T09:00:00+08:00\"\n}",
+              "raw": "{\n  \"customerId\": \"{{bookingCustomerId}}\",\n  \"vehicleId\": \"{{bookingVehicleId}}\",\n  \"dealershipId\": \"{{kioskDealershipId}}\",\n  \"serviceTypeId\": \"{{tyreRotationServiceTypeId}}\",\n  \"serviceBayId\": \"{{kioskBayId}}\",\n  \"startTime\": \"2026-11-04T09:00:00+08:00\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -45,7 +45,7 @@ class SlotStepConfigIT extends IntegrationTest {
         UUID dealer = fixtures.dealership("UTC", "08:00", "17:00");
         UUID service = fixtures.serviceType(60);
         UUID vehicleType = fixtures.vehicleType();
-        fixtures.bay(dealer, vehicleType);
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         UUID customer = fixtures.customer();
         UUID vehicle = fixtures.vehicle(customer, vehicleType);
@@ -60,19 +60,20 @@ class SlotStepConfigIT extends IntegrationTest {
         }
         assertThat(minutes).isNotEmpty().containsOnly("00", "30");
 
-        HttpResponse<String> offGrid = book(customer, vehicle, dealer, service, DAY + "T09:15:00Z");
+        HttpResponse<String> offGrid = book(customer, vehicle, dealer, service, bay, DAY + "T09:15:00Z");
         assertThat(offGrid.statusCode()).isEqualTo(422);
         assertThat(json.readTree(offGrid.body()).get("detail").asString())
                 .isEqualTo("The start time must be on a 30-minute slot.");
 
-        assertThat(book(customer, vehicle, dealer, service, DAY + "T09:30:00Z").statusCode()).isEqualTo(201);
+        assertThat(book(customer, vehicle, dealer, service, bay, DAY + "T09:30:00Z").statusCode()).isEqualTo(201);
     }
 
-    private HttpResponse<String> book(UUID customer, UUID vehicle, UUID dealer, UUID service, String start)
+    private HttpResponse<String> book(UUID customer, UUID vehicle, UUID dealer, UUID service, UUID bay, String start)
             throws Exception {
         String body = """
-                {"customerId":"%s","vehicleId":"%s","dealershipId":"%s","serviceTypeId":"%s","startTime":"%s"}
-                """.formatted(customer, vehicle, dealer, service, start);
+                {"customerId":"%s","vehicleId":"%s","dealershipId":"%s","serviceTypeId":"%s","serviceBayId":"%s",\
+                "startTime":"%s"}
+                """.formatted(customer, vehicle, dealer, service, bay, start);
         return send(HttpRequest.newBuilder(uri("/api/v1/appointments"))
                 .header("Content-Type", "application/json")
                 .header("Idempotency-Key", UUID.randomUUID().toString())

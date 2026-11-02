@@ -112,7 +112,7 @@ class AppointmentBookingIT extends IntegrationTest {
         UUID tech = fixtures.technician(dealer, service, vehicleType);
         String key = key();
 
-        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, local("09:00")));
+        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, bay, local("09:00")));
 
         assertThat(response.statusCode()).isEqualTo(201);
         JsonNode body = json.readTree(response.body());
@@ -152,7 +152,7 @@ class AppointmentBookingIT extends IntegrationTest {
     void locationOfABookingReadsBackTheSameAppointment() throws Exception {
         UUID bay = fixtures.bay(dealer, vehicleType);
         UUID tech = fixtures.technician(dealer, service, vehicleType);
-        HttpResponse<String> booked = book(key(), body(customer, vehicle, dealer, service, local("09:00")));
+        HttpResponse<String> booked = book(key(), body(customer, vehicle, dealer, service, bay, local("09:00")));
         assertThat(booked.statusCode()).isEqualTo(201);
         String location = booked.headers().firstValue("Location").orElseThrow();
 
@@ -178,10 +178,10 @@ class AppointmentBookingIT extends IntegrationTest {
 
     @Test
     void ac14PayloadHasTheContractFields() throws Exception {
-        fixtures.bay(dealer, vehicleType);
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
 
-        String id = json.readTree(book(key(), body(customer, vehicle, dealer, service, local("10:00"))).body())
+        String id = json.readTree(book(key(), body(customer, vehicle, dealer, service, bay, local("10:00"))).body())
                 .get("id").asString();
 
         JsonNode sample = json.readTree(Files.readString(Path.of("../docs/contracts/outbox/AppointmentBooked.json")));
@@ -198,50 +198,64 @@ class AppointmentBookingIT extends IntegrationTest {
 
     @Test
     void ac3UnknownIdsAre404NamingTheEntity() throws Exception {
-        fixtures.bay(dealer, vehicleType);
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         UUID unknown = UUID.fromString("00000000-0000-7000-8000-000000000000");
         String start = local("09:00");
 
-        assertProblem(book(key(), body(customer, vehicle, unknown, service, start)), 404,
+        assertProblem(book(key(), body(customer, vehicle, unknown, service, bay, start)), 404,
                 "Dealership " + unknown + " not found");
-        assertProblem(book(key(), body(customer, vehicle, dealer, unknown, start)), 404,
+        assertProblem(book(key(), body(customer, vehicle, dealer, unknown, bay, start)), 404,
                 "Service type " + unknown + " not found");
-        assertProblem(book(key(), body(customer, unknown, dealer, service, start)), 404,
+        assertProblem(book(key(), body(customer, unknown, dealer, service, bay, start)), 404,
                 "Vehicle " + unknown + " not found");
-        assertProblem(book(key(), body(unknown, vehicle, dealer, service, start)), 404,
+        assertProblem(book(key(), body(unknown, vehicle, dealer, service, bay, start)), 404,
                 "Customer " + unknown + " not found");
+        assertProblem(book(key(), body(customer, vehicle, dealer, service, unknown, start)), 404,
+                "Service bay " + unknown + " not found");
+    }
+
+    @Test
+    void bayOfAnotherDealershipIs404() throws Exception {
+        fixtures.bay(dealer, vehicleType);
+        fixtures.technician(dealer, service, vehicleType);
+        UUID otherDealer = fixtures.dealership("Asia/Ho_Chi_Minh", "08:00", "17:00");
+        UUID foreignBay = fixtures.bay(otherDealer, vehicleType);
+
+        assertProblem(book(key(), body(customer, vehicle, dealer, service, foreignBay, local("09:00"))), 404,
+                "Service bay " + foreignBay + " not found");
+        verify(appointments, never()).insert(any());
     }
 
     @Test
     void ac4VehicleOfAnotherCustomerIs400() throws Exception {
-        fixtures.bay(dealer, vehicleType);
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         UUID stranger = fixtures.customer();
 
-        assertProblem(book(key(), body(stranger, vehicle, dealer, service, local("09:00"))), 400,
+        assertProblem(book(key(), body(stranger, vehicle, dealer, service, bay, local("09:00"))), 400,
                 "The vehicle does not belong to this customer.");
     }
 
     @Test
     void ac5WindowOutsideLocalBusinessHoursIs422() throws Exception {
-        fixtures.bay(dealer, vehicleType);
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         String outside = "The time is outside the dealership's business hours.";
 
         // Before open, after close, and inside but ending after close (16:30 + 60 min)
-        assertProblem(book(key(), body(customer, vehicle, dealer, service, local("07:00"))), 422, outside);
-        assertProblem(book(key(), body(customer, vehicle, dealer, service, local("20:00"))), 422, outside);
-        assertProblem(book(key(), body(customer, vehicle, dealer, service, local("16:30"))), 422, outside);
+        assertProblem(book(key(), body(customer, vehicle, dealer, service, bay, local("07:00"))), 422, outside);
+        assertProblem(book(key(), body(customer, vehicle, dealer, service, bay, local("20:00"))), 422, outside);
+        assertProblem(book(key(), body(customer, vehicle, dealer, service, bay, local("16:30"))), 422, outside);
         // 08:00 in UTC terms is 15:00 local: inside. The check is local, not UTC.
-        assertThat(book(key(), body(customer, vehicle, dealer, service, DAY + "T08:00:00Z")).statusCode())
+        assertThat(book(key(), body(customer, vehicle, dealer, service, bay, DAY + "T08:00:00Z")).statusCode())
                 .isEqualTo(201);
         verify(appointments).insert(any());
     }
 
     @Test
     void ac6VehicleAlreadyBookedIs422AndNoPairIsTried() throws Exception {
-        fixtures.bay(dealer, vehicleType);
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         // The same vehicle already holds another bay and technician 09:30–10:30
         UUID otherBay = fixtures.bay(dealer, vehicleType);
@@ -249,32 +263,32 @@ class AppointmentBookingIT extends IntegrationTest {
         fixtures.appointment(customer, vehicle, dealer, service, vehicleType, otherBay, otherTech,
                 at("09:30"), at("10:30"), "CONFIRMED");
 
-        assertProblem(book(key(), body(customer, vehicle, dealer, service, local("09:00"))), 422,
+        assertProblem(book(key(), body(customer, vehicle, dealer, service, bay, local("09:00"))), 422,
                 "The vehicle already has an appointment at this time.");
         verify(appointments, never()).insert(any());
     }
 
     @Test
     void ac7StartMustBeOnTheSlotGrid() throws Exception {
-        fixtures.bay(dealer, vehicleType);
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         String offGrid = "The start time must be on a 15-minute slot.";
 
-        assertProblem(book(key(), body(customer, vehicle, dealer, service, local("09:07"))), 422, offGrid);
-        assertProblem(book(key(), body(customer, vehicle, dealer, service, DAY + "T09:00:30+07:00")), 422, offGrid);
-        assertThat(book(key(), body(customer, vehicle, dealer, service, local("09:00"))).statusCode()).isEqualTo(201);
+        assertProblem(book(key(), body(customer, vehicle, dealer, service, bay, local("09:07"))), 422, offGrid);
+        assertProblem(book(key(), body(customer, vehicle, dealer, service, bay, DAY + "T09:00:30+07:00")), 422, offGrid);
+        assertThat(book(key(), body(customer, vehicle, dealer, service, bay, local("09:00"))).statusCode()).isEqualTo(201);
     }
 
     @Test
     void ac7GridUsesLocalTimeOnADstDay() throws Exception {
         // 2030-03-10: New York moves 02:00 → 03:00; open 08:00 local is 12:00Z, not 13:00Z
         UUID ny = fixtures.dealership("America/New_York", "08:00", "17:00");
-        fixtures.bay(ny, vehicleType);
+        UUID nyBay = fixtures.bay(ny, vehicleType);
         fixtures.technician(ny, service, vehicleType);
 
-        assertProblem(book(key(), body(customer, vehicle, ny, service, "2030-03-10T09:07:00-04:00")), 422,
+        assertProblem(book(key(), body(customer, vehicle, ny, service, nyBay, "2030-03-10T09:07:00-04:00")), 422,
                 "The start time must be on a 15-minute slot.");
-        HttpResponse<String> ok = book(key(), body(customer, vehicle, ny, service, "2030-03-10T13:00:00Z"));
+        HttpResponse<String> ok = book(key(), body(customer, vehicle, ny, service, nyBay, "2030-03-10T13:00:00Z"));
         assertThat(ok.statusCode()).isEqualTo(201);
         assertThat(json.readTree(ok.body()).get("startTime").asString()).isEqualTo("2030-03-10T13:00:00Z");
     }
@@ -282,12 +296,26 @@ class AppointmentBookingIT extends IntegrationTest {
     // ---------------------------------------------------------------- candidates
 
     @Test
-    void ac10NoFittingBayIs422NotServiceable() throws Exception {
-        fixtures.bay(dealer, fixtures.vehicleType());
+    void ac10BayThatDoesNotTakeTheVehicleTypeIs422NotServiceable() throws Exception {
+        // A free bay of this dealership, but for another vehicle type only
+        UUID bay = fixtures.bay(dealer, fixtures.vehicleType());
+        fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
 
-        assertProblem(book(key(), body(customer, vehicle, dealer, service, local("09:00"))), 422,
+        assertProblem(book(key(), body(customer, vehicle, dealer, service, bay, local("09:00"))), 422,
                 "No bay or technician at this dealership can service this vehicle.");
+        verify(appointments, never()).insert(any());
+    }
+
+    @Test
+    void ac10InactiveBayIs422NotServiceable() throws Exception {
+        UUID bay = fixtures.bay(dealer, vehicleType);
+        fixtures.technician(dealer, service, vehicleType);
+        jdbc.sql("UPDATE service_bays SET active = false WHERE id = ?").param(bay).update();
+
+        assertProblem(book(key(), body(customer, vehicle, dealer, service, bay, local("09:00"))), 422,
+                "No bay or technician at this dealership can service this vehicle.");
+        verify(appointments, never()).insert(any());
     }
 
     @Test
@@ -296,10 +324,23 @@ class AppointmentBookingIT extends IntegrationTest {
         UUID tech = fixtures.technician(dealer, service, vehicleType);
         fixtures.appointment(dealer, service, vehicleType, bay, tech, at("09:00"), at("10:00"), "CONFIRMED");
 
-        HttpResponse<String> response = book(key(), body(customer, vehicle, dealer, service, local("09:00")));
+        HttpResponse<String> response = book(key(), body(customer, vehicle, dealer, service, bay, local("09:00")));
 
         assertProblem(response, 409, BOOKING_FAILED);
         assertThat(json.readTree(response.body()).get("title").asString()).isEqualTo("Booking failed");
+    }
+
+    @Test
+    void chosenBayBusyIs409EvenWithFreeTechnicians() throws Exception {
+        UUID bay = fixtures.bay(dealer, vehicleType);
+        UUID busyTech = fixtures.technician(dealer, service, vehicleType);
+        fixtures.technician(dealer, service, vehicleType);
+        // Another free bay exists, but the client chose this one: the server never swaps it
+        fixtures.bay(dealer, vehicleType);
+        fixtures.appointment(dealer, service, vehicleType, bay, busyTech, at("09:30"), at("10:30"), "CONFIRMED");
+
+        assertProblem(book(key(), body(customer, vehicle, dealer, service, bay, local("09:00"))), 409, BOOKING_FAILED);
+        verify(appointments, never()).insert(any());
     }
 
     @Test
@@ -309,44 +350,74 @@ class AppointmentBookingIT extends IntegrationTest {
         fixtures.appointment(dealer, service, vehicleType, bay, tech, at("08:00"), at("09:00"), "CONFIRMED");
         fixtures.appointment(dealer, service, vehicleType, bay, tech, at("09:00"), at("10:00"), "CANCELLED");
 
-        assertThat(book(key(), body(customer, vehicle, dealer, service, local("09:00"))).statusCode()).isEqualTo(201);
+        assertThat(book(key(), body(customer, vehicle, dealer, service, bay, local("09:00"))).statusCode()).isEqualTo(201);
     }
 
     // ---------------------------------------------------------------- transaction
 
     @Test
-    void ac15FirstPairTakenConcurrentlyThenSecondPairIsBooked() throws Exception {
-        fixtures.bay(dealer, vehicleType);
-        fixtures.bay(dealer, vehicleType);
+    void ac15FirstTechnicianTakenConcurrentlyThenSecondIsBooked() throws Exception {
+        UUID bay = fixtures.bay(dealer, vehicleType);
+        UUID elsewhere = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         List<NewAppointment> tried = new ArrayList<>();
         doAnswer(invocation -> {
             NewAppointment a = invocation.getArgument(0);
             if (tried.isEmpty()) {
-                // Another booking commits on its own connection just before our insert
-                takeConcurrently(a);
+                // Another booking takes our first technician in another bay just before our insert
+                takeTechnicianConcurrently(a, elsewhere);
             }
             tried.add(a);
             return invocation.callRealMethod();
         }).when(appointments).insert(any());
         String key = key();
 
-        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, local("09:00")));
+        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, bay, local("09:00")));
 
         assertThat(response.statusCode()).isEqualTo(201);
         assertThat(tried).hasSize(2);
+        assertThat(tried).extracting(NewAppointment::serviceBayId).containsOnly(bay);
+        assertThat(tried.get(1).technicianId()).isNotEqualTo(tried.get(0).technicianId());
         JsonNode body = json.readTree(response.body());
-        assertThat(body.get("serviceBayId").asString()).isEqualTo(tried.get(1).serviceBayId().toString());
+        assertThat(body.get("serviceBayId").asString()).isEqualTo(bay.toString());
         assertThat(body.get("technicianId").asString()).isEqualTo(tried.get(1).technicianId().toString());
         assertThat(appointmentsWithKey(key)).isEqualTo(1);
         assertThat(outboxRowsOfDealer()).isEqualTo(1);
     }
 
     @Test
-    void firstPairLosesItsFitThenSecondPairIsBooked() throws Exception {
-        fixtures.bay(dealer, vehicleType);
-        fixtures.bay(dealer, vehicleType);
+    void chosenBayTakenConcurrentlyStopsTheTriesWith409() throws Exception {
+        UUID bay = fixtures.bay(dealer, vehicleType);
+        fixtures.technician(dealer, service, vehicleType);
+        fixtures.technician(dealer, service, vehicleType);
+        // Never offered (inactive), so the concurrent booking below holds the bay only
+        UUID outsider = fixtures.technician(dealer, service, vehicleType);
+        jdbc.sql("UPDATE technicians SET active = false WHERE id = ?").param(outsider).update();
+        List<NewAppointment> tried = new ArrayList<>();
+        doAnswer(invocation -> {
+            NewAppointment a = invocation.getArgument(0);
+            if (tried.isEmpty()) {
+                // Another booking takes the bay: every other pair has the same bay, so no more tries
+                pool.submit(() -> fixtures.appointment(dealer, service, vehicleType, bay, outsider,
+                        OffsetDateTime.ofInstant(a.start(), ZoneOffset.UTC),
+                        OffsetDateTime.ofInstant(a.end(), ZoneOffset.UTC), "CONFIRMED")).get();
+            }
+            tried.add(a);
+            return invocation.callRealMethod();
+        }).when(appointments).insert(any());
+        String key = key();
+
+        assertProblem(book(key, body(customer, vehicle, dealer, service, bay, local("09:00"))), 409, BOOKING_FAILED);
+
+        assertThat(tried).hasSize(1);
+        assertThat(appointmentsWithKey(key)).isZero();
+        assertThat(outboxRowsOfDealer()).isZero();
+    }
+
+    @Test
+    void chosenBayLosesItsFitMidFlightIs409() throws Exception {
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         List<NewAppointment> tried = new ArrayList<>();
@@ -354,7 +425,7 @@ class AppointmentBookingIT extends IntegrationTest {
             NewAppointment a = invocation.getArgument(0);
             if (tried.isEmpty()) {
                 // After the candidate read, the bay stops taking this vehicle type (committed
-                // on another connection): fk_appointments_bay_type refuses our insert
+                // on another connection): fk_appointments_bay_type refuses every pair
                 pool.submit(() -> jdbc.sql("DELETE FROM service_bay_vehicle_types"
                                 + " WHERE service_bay_id = ? AND vehicle_type_id = ?")
                         .params(a.serviceBayId(), a.vehicleTypeId()).update()).get();
@@ -364,26 +435,22 @@ class AppointmentBookingIT extends IntegrationTest {
         }).when(appointments).insert(any());
         String key = key();
 
-        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, local("09:00")));
+        assertProblem(book(key, body(customer, vehicle, dealer, service, bay, local("09:00"))), 409, BOOKING_FAILED);
 
-        assertThat(response.statusCode()).isEqualTo(201);
         assertThat(tried).hasSize(2);
-        assertThat(tried.get(1).serviceBayId()).isNotEqualTo(tried.get(0).serviceBayId());
-        JsonNode body = json.readTree(response.body());
-        assertThat(body.get("serviceBayId").asString()).isEqualTo(tried.get(1).serviceBayId().toString());
-        assertThat(appointmentsWithKey(key)).isEqualTo(1);
-        assertThat(outboxRowsOfDealer()).isEqualTo(1);
+        assertThat(appointmentsWithKey(key)).isZero();
+        assertThat(outboxRowsOfDealer()).isZero();
     }
 
     @Test
     void firstPairTechnicianDeactivatedThenSecondPairIsBooked() throws Exception {
-        fixtures.bay(dealer, vehicleType);
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         List<NewAppointment> tried = deactivateBeforeFirstInsert("technicians", NewAppointment::technicianId);
         String key = key();
 
-        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, local("09:00")));
+        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, bay, local("09:00")));
 
         assertThat(response.statusCode()).isEqualTo(201);
         assertThat(tried).hasSize(2);
@@ -395,32 +462,27 @@ class AppointmentBookingIT extends IntegrationTest {
     }
 
     @Test
-    void firstPairBayDeactivatedThenSecondPairIsBooked() throws Exception {
-        fixtures.bay(dealer, vehicleType);
-        fixtures.bay(dealer, vehicleType);
+    void chosenBayDeactivatedMidFlightIs409AndLeavesNoRows() throws Exception {
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         List<NewAppointment> tried = deactivateBeforeFirstInsert("service_bays", NewAppointment::serviceBayId);
         String key = key();
 
-        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, local("09:00")));
+        assertProblem(book(key, body(customer, vehicle, dealer, service, bay, local("09:00"))), 409, BOOKING_FAILED);
 
-        assertThat(response.statusCode()).isEqualTo(201);
-        assertThat(tried).hasSize(2);
-        assertThat(tried.get(1).serviceBayId()).isNotEqualTo(tried.get(0).serviceBayId());
-        assertThat(json.readTree(response.body()).get("serviceBayId").asString())
-                .isEqualTo(tried.get(1).serviceBayId().toString());
-        assertThat(appointmentsWithKey(key)).isEqualTo(1);
-        assertThat(outboxRowsOfDealer()).isEqualTo(1);
+        assertThat(tried).hasSize(1);
+        assertThat(appointmentsWithKey(key)).isZero();
+        assertThat(outboxRowsOfDealer()).isZero();
     }
 
     @Test
     void onlyPairDeactivatedMidFlightIs409AndLeavesNoRows() throws Exception {
-        fixtures.bay(dealer, vehicleType);
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         List<NewAppointment> tried = deactivateBeforeFirstInsert("technicians", NewAppointment::technicianId);
         String key = key();
 
-        assertProblem(book(key, body(customer, vehicle, dealer, service, local("09:00"))), 409, BOOKING_FAILED);
+        assertProblem(book(key, body(customer, vehicle, dealer, service, bay, local("09:00"))), 409, BOOKING_FAILED);
 
         assertThat(tried).hasSize(1);
         assertThat(appointmentsWithKey(key)).isZero();
@@ -429,7 +491,7 @@ class AppointmentBookingIT extends IntegrationTest {
 
     @Test
     void deactivationStillOpenDuringInsertIsWaitedForAndSeen() throws Exception {
-        fixtures.bay(dealer, vehicleType);
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         List<NewAppointment> tried = new ArrayList<>();
@@ -460,7 +522,7 @@ class AppointmentBookingIT extends IntegrationTest {
         }).when(appointments).insert(any());
         String key = key();
 
-        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, local("09:00")));
+        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, bay, local("09:00")));
 
         assertThat(response.statusCode()).isEqualTo(201);
         assertThat(tried).hasSize(2);
@@ -470,12 +532,11 @@ class AppointmentBookingIT extends IntegrationTest {
     }
 
     @Test
-    void inactiveTechnicianOrBayIsNeverOffered() throws Exception {
-        UUID activeBay = fixtures.bay(dealer, vehicleType);
-        UUID inactiveBay = fixtures.bay(dealer, vehicleType);
+    void inactiveTechnicianIsNeverOffered() throws Exception {
+        UUID bay = fixtures.bay(dealer, vehicleType);
+        UUID otherBay = fixtures.bay(dealer, vehicleType);
         UUID activeTech = fixtures.technician(dealer, service, vehicleType);
         UUID inactiveTech = fixtures.technician(dealer, service, vehicleType);
-        jdbc.sql("UPDATE service_bays SET active = false WHERE id = ?").param(inactiveBay).update();
         jdbc.sql("UPDATE technicians SET active = false WHERE id = ?").param(inactiveTech).update();
         List<NewAppointment> tried = new ArrayList<>();
         doAnswer(invocation -> {
@@ -483,52 +544,56 @@ class AppointmentBookingIT extends IntegrationTest {
             return invocation.callRealMethod();
         }).when(appointments).insert(any());
 
-        HttpResponse<String> first = book(key(), body(customer, vehicle, dealer, service, local("09:00")));
+        HttpResponse<String> first = book(key(), body(customer, vehicle, dealer, service, bay, local("09:00")));
         UUID owner = fixtures.customer();
         HttpResponse<String> second = book(key(),
-                body(owner, fixtures.vehicle(owner, vehicleType), dealer, service, local("09:00")));
+                body(owner, fixtures.vehicle(owner, vehicleType), dealer, service, otherBay, local("09:00")));
 
         assertThat(first.statusCode()).isEqualTo(201);
         JsonNode body = json.readTree(first.body());
-        assertThat(body.get("serviceBayId").asString()).isEqualTo(activeBay.toString());
+        assertThat(body.get("serviceBayId").asString()).isEqualTo(bay.toString());
         assertThat(body.get("technicianId").asString()).isEqualTo(activeTech.toString());
-        // The only active pair is taken: the inactive ones are not tried, so 409
+        // The only active technician is taken: the inactive one is not tried, so 409
         assertProblem(second, 409, BOOKING_FAILED);
-        assertThat(tried).extracting(NewAppointment::serviceBayId).containsOnly(activeBay);
         assertThat(tried).extracting(NewAppointment::technicianId).containsOnly(activeTech);
     }
 
     @Test
     void ac16AllPairsFailIs409AndLeavesNoRows() throws Exception {
-        fixtures.bay(dealer, vehicleType);
-        fixtures.bay(dealer, vehicleType);
-        fixtures.technician(dealer, service, vehicleType);
-        fixtures.technician(dealer, service, vehicleType);
+        UUID bay = fixtures.bay(dealer, vehicleType);
+        List<UUID> elsewhere = List.of(fixtures.bay(dealer, vehicleType), fixtures.bay(dealer, vehicleType),
+                fixtures.bay(dealer, vehicleType));
+        for (int i = 0; i < 4; i++) {
+            fixtures.technician(dealer, service, vehicleType);
+        }
         List<NewAppointment> tried = new ArrayList<>();
         doAnswer(invocation -> {
             NewAppointment a = invocation.getArgument(0);
-            takeConcurrently(a);
+            // Each technician is taken in another bay just before we try it
+            takeTechnicianConcurrently(a, elsewhere.get(tried.size()));
             tried.add(a);
             return invocation.callRealMethod();
         }).when(appointments).insert(any());
         String key = key();
 
-        assertProblem(book(key, body(customer, vehicle, dealer, service, local("09:00"))), 409, BOOKING_FAILED);
+        assertProblem(book(key, body(customer, vehicle, dealer, service, bay, local("09:00"))), 409, BOOKING_FAILED);
 
+        // scheduler.booking.max-pairs = 3, though 4 technicians were free
         assertThat(tried).hasSize(3);
+        assertThat(tried).extracting(NewAppointment::serviceBayId).containsOnly(bay);
         assertThat(appointmentsWithKey(key)).isZero();
         assertThat(outboxRowsOfDealer()).isZero();
     }
 
     @Test
     void ac17OutboxFailureRollsBackTheAppointment() throws Exception {
-        fixtures.bay(dealer, vehicleType);
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         doThrow(new DataAccessResourceFailureException("outbox down"))
                 .when(outbox).append(anyString(), anyString(), anyString(), any());
         String key = key();
 
-        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, local("09:00")));
+        HttpResponse<String> response = book(key, body(customer, vehicle, dealer, service, bay, local("09:00")));
 
         assertThat(response.statusCode()).isEqualTo(503);
         verify(appointments).insert(any());
@@ -538,10 +603,10 @@ class AppointmentBookingIT extends IntegrationTest {
 
     @Test
     void ac18SameKeyOneAfterTheOtherReplaysAndOtherBodyIs422() throws Exception {
-        fixtures.bay(dealer, vehicleType);
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         String key = key();
-        String body = body(customer, vehicle, dealer, service, local("09:00"));
+        String body = body(customer, vehicle, dealer, service, bay, local("09:00"));
 
         HttpResponse<String> first = book(key, body);
         HttpResponse<String> second = book(key, body);
@@ -555,21 +620,24 @@ class AppointmentBookingIT extends IntegrationTest {
         assertThat(outboxRowsOfDealer()).isEqualTo(1);
 
         // Same key, other start time
-        assertProblem(book(key, body(customer, vehicle, dealer, service, local("10:00"))), 422,
+        assertProblem(book(key, body(customer, vehicle, dealer, service, bay, local("10:00"))), 422,
+                "This Idempotency-Key was already used for a different request.");
+        // Same key, other bay
+        UUID otherBay = fixtures.bay(dealer, vehicleType);
+        assertProblem(book(key, body(customer, vehicle, dealer, service, otherBay, local("09:00"))), 422,
                 "This Idempotency-Key was already used for a different request.");
         // Same instant written with another offset is the same request
-        assertThat(book(key, body(customer, vehicle, dealer, service, DAY + "T02:00:00Z")).statusCode())
+        assertThat(book(key, body(customer, vehicle, dealer, service, bay, DAY + "T02:00:00Z")).statusCode())
                 .isEqualTo(201);
     }
 
     @Test
     void ac18SameKeyInParallelGivesOneAppointment() throws Exception {
-        fixtures.bay(dealer, vehicleType);
-        fixtures.bay(dealer, vehicleType);
+        UUID bay = fixtures.bay(dealer, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         String key = key();
-        String body = body(customer, vehicle, dealer, service, local("09:00"));
+        String body = body(customer, vehicle, dealer, service, bay, local("09:00"));
 
         List<HttpResponse<String>> responses = parallel(10, i -> book(key, body));
 
@@ -583,11 +651,11 @@ class AppointmentBookingIT extends IntegrationTest {
 
     @Test
     void sameVehicleInParallelWithOtherKeysGivesOne201AndThe422s() throws Exception {
+        UUID bay = fixtures.bay(dealer, vehicleType);
         for (int i = 0; i < 3; i++) {
-            fixtures.bay(dealer, vehicleType);
             fixtures.technician(dealer, service, vehicleType);
         }
-        String body = body(customer, vehicle, dealer, service, local("09:00"));
+        String body = body(customer, vehicle, dealer, service, bay, local("09:00"));
 
         List<HttpResponse<String>> responses = parallel(10, i -> book(key(), body));
 
@@ -599,14 +667,15 @@ class AppointmentBookingIT extends IntegrationTest {
 
     @Test
     void ac19TwentyParallelBookingsOnTwoFreePairs() throws Exception {
-        fixtures.bay(dealer, vehicleType);
-        fixtures.bay(dealer, vehicleType);
+        List<UUID> bays = List.of(fixtures.bay(dealer, vehicleType), fixtures.bay(dealer, vehicleType));
         fixtures.technician(dealer, service, vehicleType);
         fixtures.technician(dealer, service, vehicleType);
         List<String> bodies = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
             UUID owner = fixtures.customer();
-            bodies.add(body(owner, fixtures.vehicle(owner, vehicleType), dealer, service, local("09:00")));
+            // Half the clients choose each bay
+            bodies.add(body(owner, fixtures.vehicle(owner, vehicleType), dealer, service, bays.get(i % 2),
+                    local("09:00")));
         }
 
         List<HttpResponse<String>> responses = parallel(20, i -> book(key(), bodies.get(i)));
@@ -620,13 +689,13 @@ class AppointmentBookingIT extends IntegrationTest {
                         WHERE dealership_id = ? AND status <> 'CANCELLED'
                         """).param(dealer).query().listOfRows();
         assertThat(rows).hasSize(2);
-        Set<Object> bays = new HashSet<>();
+        Set<Object> bookedBays = new HashSet<>();
         Set<Object> techs = new HashSet<>();
         rows.forEach(r -> {
-            bays.add(r.get("service_bay_id"));
+            bookedBays.add(r.get("service_bay_id"));
             techs.add(r.get("technician_id"));
         });
-        assertThat(bays).hasSize(2);
+        assertThat(bookedBays).hasSize(2);
         assertThat(techs).hasSize(2);
         assertThat(outboxRowsOfDealer()).isEqualTo(2);
     }
@@ -634,17 +703,13 @@ class AppointmentBookingIT extends IntegrationTest {
     // ---------------------------------------------------------------- helpers
 
     /**
-     * Commits a booking of {@code a}'s bay and technician on another thread and connection.
-     * When an earlier concurrent booking already holds one of them, that is enough.
+     * Commits a booking of {@code a}'s technician in bay {@code otherBay} on another thread and
+     * connection, so our try fails on the technician, not on the bay.
      */
-    private void takeConcurrently(NewAppointment a) throws Exception {
-        try {
-            pool.submit(() -> fixtures.appointment(a.dealershipId(), a.serviceTypeId(), a.vehicleTypeId(),
-                    a.serviceBayId(), a.technicianId(), OffsetDateTime.ofInstant(a.start(), ZoneOffset.UTC),
-                    OffsetDateTime.ofInstant(a.end(), ZoneOffset.UTC), "CONFIRMED")).get();
-        } catch (ExecutionException alreadyTaken) {
-            // ex_appointments_bay / _technician: the pair is blocked anyway
-        }
+    private void takeTechnicianConcurrently(NewAppointment a, UUID otherBay) throws Exception {
+        pool.submit(() -> fixtures.appointment(a.dealershipId(), a.serviceTypeId(), a.vehicleTypeId(),
+                otherBay, a.technicianId(), OffsetDateTime.ofInstant(a.start(), ZoneOffset.UTC),
+                OffsetDateTime.ofInstant(a.end(), ZoneOffset.UTC), "CONFIRMED")).get();
     }
 
     /**
@@ -703,10 +768,11 @@ class AppointmentBookingIT extends IntegrationTest {
                 HttpResponse.BodyHandlers.ofString());
     }
 
-    private static String body(UUID customer, UUID vehicle, UUID dealer, UUID service, String start) {
+    private static String body(UUID customer, UUID vehicle, UUID dealer, UUID service, UUID bay, String start) {
         return """
-                {"customerId":"%s","vehicleId":"%s","dealershipId":"%s","serviceTypeId":"%s","startTime":"%s"}
-                """.formatted(customer, vehicle, dealer, service, start);
+                {"customerId":"%s","vehicleId":"%s","dealershipId":"%s","serviceTypeId":"%s","serviceBayId":"%s",\
+                "startTime":"%s"}
+                """.formatted(customer, vehicle, dealer, service, bay, start);
     }
 
     private void assertProblem(HttpResponse<String> response, int status, String detail) {

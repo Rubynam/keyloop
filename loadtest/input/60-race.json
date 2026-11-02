@@ -10,6 +10,7 @@
       "goal": "Capacity 1: London Park Royal has ONE oil-change technician (Yuki). 10 different cars want 10:00 London time → exactly 1 x 201, 9 x 409. Two 201s = the exclusion constraint or the retry loop is broken.",
       "verifies": ["Spec03 DB-01 ex_appointments_technician", "DLD §5 retry next pair"],
       "bind": {
+        "bay": "bay:LONDON:{{run.user}}",
         "v": "pick:standardCars:{{run.user}}",
         "key": "uuid",
         "start": {"at": {"tz": "Europe/London", "days": "run", "time": "10:00"}}
@@ -24,6 +25,7 @@
           "vehicleId": "{{v.vehicleId}}",
           "dealershipId": "{{ref.dealerships.LONDON}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "serviceBayId": "{{bay}}",
           "startTime": "{{start}}"
         }
       }
@@ -33,6 +35,7 @@
       "goal": "Idempotency race: the SAME request with the SAME Idempotency-Key from 10 users at once (a client retrying in parallel) → 10 x 201 and ONE appointment id. A unique-key violation must be turned into 'return the existing one', not 409/500.",
       "verifies": ["DLD §5 idempotency", "Spec03 idempotency_key UNIQUE"],
       "bind": {
+        "bay": "bay:Q7:0",
         "v": "pick:standardCars:0",
         "start": {"at": {"tz": "Asia/Ho_Chi_Minh", "days": "run+1", "time": "09:00"}}
       },
@@ -46,6 +49,7 @@
           "vehicleId": "{{v.vehicleId}}",
           "dealershipId": "{{ref.dealerships.Q7}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "serviceBayId": "{{bay}}",
           "startTime": "{{start}}"
         }
       }
@@ -55,6 +59,7 @@
       "goal": "One car, many keys: the same vehicle booked 10 times at once with DIFFERENT keys at the hub, which has 6 free oil-change technicians and 8 bays → still exactly 1 x 201, the rest 422 (Spec07 D2): the vehicle itself is a resource (DB-03).",
       "verifies": ["Spec03 DB-03 ex_appointments_vehicle"],
       "bind": {
+        "bay": "bay:Q7:0",
         "v": "pick:standardCars:1",
         "key": "uuid",
         "start": {"at": {"tz": "Asia/Ho_Chi_Minh", "days": "run+2", "time": "10:00"}}
@@ -69,6 +74,7 @@
           "vehicleId": "{{v.vehicleId}}",
           "dealershipId": "{{ref.dealerships.Q7}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "serviceBayId": "{{bay}}",
           "startTime": "{{start}}"
         }
       }

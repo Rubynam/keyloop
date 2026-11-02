@@ -53,7 +53,8 @@ import org.springframework.transaction.support.TransactionOperations;
 /**
  * {@link AppointmentService} on PostgreSQL (Spec07 §5–§7, Spec04 §6). Checks run in the
  * §5.1 order; then each (bay, technician) pair gets its own short transaction with the
- * appointment and its outbox event. The exclusion constraints decide; this class only
+ * appointment and its outbox event. The bay comes from the client, so the pairs only
+ * differ in the technician. The exclusion constraints decide; this class only
  * reacts to what they say.
  *
  * <p>No {@code @Transactional} here: every pair needs its own transaction, run through
@@ -61,12 +62,14 @@ import org.springframework.transaction.support.TransactionOperations;
  * one more try, never a double booking.
  *
  * <pre>
- * key known? ──yes──► same 5 fields → replay  /  other → 422
+ * key known? ──yes──► same 6 fields → replay  /  other → 422
  *    │no
- * 404s ─► owner 400 ─► grid 422 ─► hours 422 ─► vehicle busy 422 ─► candidates 422 / 409
+ * 404s ─► owner 400 ─► grid 422 ─► hours 422 ─► vehicle busy 422
+ *      ─► bay 404 / candidates 422 / 409
  *    │
- * for pair in pairs:  BEGIN insert appointment + outbox COMMIT ─► 201
- *                     bay / tech taken, deadlock, resource gone ─► next pair
+ * for (bay, tech) in pairs:  BEGIN insert appointment + outbox COMMIT ─► 201
+ *                     tech taken, deadlock, resource gone ─► next pair
+ *                     bay taken ─► stop trying
  *                     vehicle taken ─► 422      same key committed ─► replay
  * all failed ─► 409   (vehicle booked meanwhile ─► 422; same key won ─► replay)
  * </pre>
@@ -149,7 +152,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
 
         CandidateResult candidates = selector.select(request.dealershipId(), request.serviceTypeId(),
-                vehicle.vehicleTypeId(), start);
+                vehicle.vehicleTypeId(), request.serviceBayId(), start);
         switch (candidates.outcome()) {
             case NOT_SERVICEABLE -> throw new NotServiceableException();
             case NONE_FREE -> throw new BookingConflictException();
@@ -160,6 +163,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 
         List<Pair> pairs = candidates.pairs();
         List<LocalDate> dates = localDates(zone, start, end);
+        tries:
         for (int i = 0; i < pairs.size(); i++) {
             Pair pair = pairs.get(i);
             NewAppointment appointment = new NewAppointment(request.customerId(), vehicle.id(),
@@ -175,7 +179,11 @@ public class AppointmentServiceImpl implements AppointmentService {
                         logTry(i, pairs.size(), pair, TryOutcome.VEHICLE_TAKEN);
                         throw new VehicleBusyException();
                     }
-                    case BAY -> logTry(i, pairs.size(), pair, TryOutcome.BAY_TAKEN);
+                    case BAY -> {
+                        // Every pair has the same bay: no other technician can help now
+                        logTry(i, pairs.size(), pair, TryOutcome.BAY_TAKEN);
+                        break tries;
+                    }
                     case TECHNICIAN -> logTry(i, pairs.size(), pair, TryOutcome.TECHNICIAN_TAKEN);
                     case PAIR -> logTry(i, pairs.size(), pair, TryOutcome.DEADLOCK);
                 }
@@ -232,12 +240,13 @@ public class AppointmentServiceImpl implements AppointmentService {
         return first.datesUntil(last.plusDays(1)).toList();
     }
 
-    /** D3: same 5 request fields → the stored appointment again; anything else → 422. */
+    /** D3: same 6 request fields → the stored appointment again; anything else → 422. */
     private BookingResult replay(StoredAppointment stored, BookAppointmentRequest request) {
         boolean same = stored.customerId().equals(request.customerId())
                 && stored.vehicleId().equals(request.vehicleId())
                 && stored.dealershipId().equals(request.dealershipId())
                 && stored.serviceTypeId().equals(request.serviceTypeId())
+                && stored.serviceBayId().equals(request.serviceBayId())
                 && stored.start().equals(request.startTime().toInstant());
         if (!same) {
             throw new IdempotencyKeyMismatchException();

@@ -79,12 +79,14 @@ class AppointmentControllerTest {
         clock.set(NOW);
     }
 
-    private static String body(String customer, String vehicle, String dealer, String service, String start) {
+    private static String body(String customer, String vehicle, String dealer, String service, String bay,
+                               String start) {
         StringBuilder json = new StringBuilder("{");
         append(json, "customerId", customer);
         append(json, "vehicleId", vehicle);
         append(json, "dealershipId", dealer);
         append(json, "serviceTypeId", service);
+        append(json, "serviceBayId", bay);
         append(json, "startTime", start);
         if (json.length() > 1) {
             json.setLength(json.length() - 1);
@@ -100,7 +102,7 @@ class AppointmentControllerTest {
     }
 
     private static String validBody() {
-        return body(CUSTOMER.toString(), VEHICLE.toString(), DEALER.toString(), SERVICE.toString(),
+        return body(CUSTOMER.toString(), VEHICLE.toString(), DEALER.toString(), SERVICE.toString(), BAY.toString(),
                 "2026-11-02T09:00:00+07:00");
     }
 
@@ -145,17 +147,19 @@ class AppointmentControllerTest {
 
     @ParameterizedTest(name = "{0}")
     @CsvSource(delimiter = '|', value = {
-            "missing customerId  | customerId    | -     | v | d | s | 2026-11-02T09:00:00+07:00",
-            "null vehicleId      | vehicleId     | c     | null | d | s | 2026-11-02T09:00:00+07:00",
-            "missing dealership  | dealershipId  | c     | v | - | s | 2026-11-02T09:00:00+07:00",
-            "bad uuid text       | serviceTypeId | c     | v | d | not-a-uuid | 2026-11-02T09:00:00+07:00",
-            "missing startTime   | startTime     | c     | v | d | s | -",
-            "past startTime      | startTime     | c     | v | d | s | 2026-10-31T09:00:00+07:00",
-            "no offset           | startTime     | c     | v | d | s | 2026-11-02T09:00:00",
+            "missing customerId   | customerId    | -     | v | d | s | b | 2026-11-02T09:00:00+07:00",
+            "null vehicleId       | vehicleId     | c     | null | d | s | b | 2026-11-02T09:00:00+07:00",
+            "missing dealership   | dealershipId  | c     | v | - | s | b | 2026-11-02T09:00:00+07:00",
+            "bad uuid text        | serviceTypeId | c     | v | d | not-a-uuid | b | 2026-11-02T09:00:00+07:00",
+            "missing serviceBayId | serviceBayId  | c     | v | d | s | - | 2026-11-02T09:00:00+07:00",
+            "null serviceBayId    | serviceBayId  | c     | v | d | s | null | 2026-11-02T09:00:00+07:00",
+            "missing startTime    | startTime     | c     | v | d | s | b | -",
+            "past startTime       | startTime     | c     | v | d | s | b | 2026-10-31T09:00:00+07:00",
+            "no offset            | startTime     | c     | v | d | s | b | 2026-11-02T09:00:00",
     })
-    void badBodyIs400WithField(String name, String field, String c, String v, String d, String s, String start)
-            throws Exception {
-        mockMvc.perform(book(KEY, body(id(c, CUSTOMER), id(v, VEHICLE), id(d, DEALER), id(s, SERVICE),
+    void badBodyIs400WithField(String name, String field, String c, String v, String d, String s, String b,
+                               String start) throws Exception {
+        mockMvc.perform(book(KEY, body(id(c, CUSTOMER), id(v, VEHICLE), id(d, DEALER), id(s, SERVICE), id(b, BAY),
                         "-".equals(start) ? null : start)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
@@ -169,7 +173,7 @@ class AppointmentControllerTest {
         return switch (token) {
             case "-" -> null;
             case "null" -> "null";
-            case "c", "v", "d", "s" -> value.toString();
+            case "c", "v", "d", "s", "b" -> value.toString();
             default -> token;
         };
     }

@@ -3,7 +3,7 @@
   "goal": "Contention at 150 requests/s on the booking API (Spec07, POST /api/v1/appointments): bookings arrive in WAVES. In one wave N different customers book the SAME slot (dealership, service type, start) at the same instant, held at a gevent gate and released together. Per wave exactly `capacity` get 201 and the rest 409; never 5xx, never a double booking.",
   "precondition": "LOADTEST_PROFILE=book-burst loadtest/run-ramp.sh (fresh build, seeding/seed.sh). Wave k of a case gets slot k of its own day range: slots are a whole step apart (step ≥ service duration) and the day ranges of the cases do not overlap, so waves never compete with each other (Q7 technicians serve several services) and a car that wins in two waves is never busy twice. Reseed before running Locust again: a second run would reuse the same slots.",
   "expectedFile": "expected/81-book-burst.json",
-  "_doc": "Input requests. A case with 'wave' is sent as one wave per pick: 'clients' requests, one per car (sameVehicle: one car for all), all with the slot of this wave in {{start}} and the car in {{v}}; 'bind' is applied per client. 'capacity' = min(bays taking the vehicle type, technicians with the skill and the vehicle type) on an empty day, from the seed (verify/book-burst.sql prints it again per slot). Weights are percent of wave picks; with these weights a wave holds 15.65 requests on average.",
+  "_doc": "Input requests. A case with 'wave' is sent as one wave per pick: 'clients' requests, one per car (sameVehicle: one car for all), all with the slot of this wave in {{start}} and the car in {{v}}; 'bind' is applied per client. Client i names bay i of the dealership's standard bays ({{wave.client}}), so the wave covers every bay. 'capacity' = min(bays taking the vehicle type, technicians with the skill and the vehicle type) on an empty day, from the seed (verify/book-burst.sql prints it again per slot). Weights are percent of wave picks; with these weights a wave holds 15.65 requests on average.",
   "cases": [
     {
       "id": "BB-01",
@@ -16,7 +16,7 @@
         "vehicleType": "GASOLINE_CAR",
         "slot": {"tz": "Europe/London", "days": [1100, 1499], "open": "08:00", "lastStart": "17:00", "stepMinutes": 60}
       },
-      "bind": {"key": "uuid"},
+      "bind": {"bay": "bay:LONDON:{{wave.client}}", "key": "uuid"},
       "request": {
         "method": "POST",
         "path": "/api/v1/appointments",
@@ -27,6 +27,7 @@
           "vehicleId": "{{v.vehicleId}}",
           "dealershipId": "{{ref.dealerships.LONDON}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "serviceBayId": "{{bay}}",
           "startTime": "{{start}}"
         }
       }
@@ -42,7 +43,7 @@
         "vehicleType": "GASOLINE_CAR",
         "slot": {"tz": "Asia/Kathmandu", "days": [1500, 1899], "open": "09:00", "lastStart": "16:00", "stepMinutes": 60}
       },
-      "bind": {"key": "uuid"},
+      "bind": {"bay": "bay:KATHMANDU:{{wave.client}}", "key": "uuid"},
       "request": {
         "method": "POST",
         "path": "/api/v1/appointments",
@@ -53,6 +54,7 @@
           "vehicleId": "{{v.vehicleId}}",
           "dealershipId": "{{ref.dealerships.KATHMANDU}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "serviceBayId": "{{bay}}",
           "startTime": "{{start}}"
         }
       }
@@ -68,7 +70,7 @@
         "vehicleType": "GASOLINE_CAR",
         "slot": {"tz": "Asia/Ho_Chi_Minh", "days": [1900, 2299], "open": "08:00", "lastStart": "16:00", "stepMinutes": 60}
       },
-      "bind": {"key": "uuid"},
+      "bind": {"bay": "bay:Q7:{{wave.client}}", "key": "uuid"},
       "request": {
         "method": "POST",
         "path": "/api/v1/appointments",
@@ -79,6 +81,7 @@
           "vehicleId": "{{v.vehicleId}}",
           "dealershipId": "{{ref.dealerships.Q7}}",
           "serviceTypeId": "{{ref.serviceTypes.DIAGNOSTICS}}",
+          "serviceBayId": "{{bay}}",
           "startTime": "{{start}}"
         }
       }
@@ -94,7 +97,7 @@
         "vehicleType": "GASOLINE_CAR",
         "slot": {"tz": "Asia/Ho_Chi_Minh", "days": [2300, 2699], "open": "08:00", "lastStart": "16:00", "stepMinutes": 60}
       },
-      "bind": {"key": "uuid"},
+      "bind": {"bay": "bay:Q7:{{wave.client}}", "key": "uuid"},
       "request": {
         "method": "POST",
         "path": "/api/v1/appointments",
@@ -105,6 +108,7 @@
           "vehicleId": "{{v.vehicleId}}",
           "dealershipId": "{{ref.dealerships.Q7}}",
           "serviceTypeId": "{{ref.serviceTypes.TYRE_ROTATION}}",
+          "serviceBayId": "{{bay}}",
           "startTime": "{{start}}"
         }
       }
@@ -120,7 +124,7 @@
         "vehicleType": "GASOLINE_CAR",
         "slot": {"tz": "Asia/Ho_Chi_Minh", "days": [2700, 3099], "open": "08:00", "lastStart": "16:00", "stepMinutes": 60}
       },
-      "bind": {"key": "uuid"},
+      "bind": {"bay": "bay:Q7:{{wave.client}}", "key": "uuid"},
       "request": {
         "method": "POST",
         "path": "/api/v1/appointments",
@@ -131,6 +135,7 @@
           "vehicleId": "{{v.vehicleId}}",
           "dealershipId": "{{ref.dealerships.Q7}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "serviceBayId": "{{bay}}",
           "startTime": "{{start}}"
         }
       }
@@ -147,7 +152,7 @@
         "vehicleType": "GASOLINE_CAR",
         "slot": {"tz": "Asia/Ho_Chi_Minh", "days": [3100, 3499], "open": "08:00", "lastStart": "16:00", "stepMinutes": 60}
       },
-      "bind": {"key": "uuid"},
+      "bind": {"bay": "bay:Q7:{{wave.client}}", "key": "uuid"},
       "request": {
         "method": "POST",
         "path": "/api/v1/appointments",
@@ -158,6 +163,7 @@
           "vehicleId": "{{v.vehicleId}}",
           "dealershipId": "{{ref.dealerships.Q7}}",
           "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+          "serviceBayId": "{{bay}}",
           "startTime": "{{start}}"
         }
       }

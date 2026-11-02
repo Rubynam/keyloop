@@ -11,6 +11,7 @@
       "verifies": ["DLD §6", "DLD §9 state machine", "Spec02 stateless replicas"],
       "weight": 4,
       "bind": {
+        "bay": "bay:Q7",
         "v": "pool:standardCars",
         "key": "uuid",
         "start": {
@@ -37,6 +38,7 @@
               "vehicleId": "{{v.vehicleId}}",
               "dealershipId": "{{ref.dealerships.Q7}}",
               "serviceTypeId": "{{ref.serviceTypes.DIAGNOSTICS}}",
+              "serviceBayId": "{{bay}}",
               "startTime": "{{start}}"
             }
           },
@@ -83,6 +85,7 @@
       "verifies": ["Spec03 DB-01..03 WHERE status <> 'CANCELLED'", "D1 outbox → version bump"],
       "weight": 2,
       "bind": {
+        "bay": "bay:Q7",
         "v": "pool:standardCars",
         "k1": "uuid",
         "k2": "uuid",
@@ -109,6 +112,7 @@
               "vehicleId": "{{v.vehicleId}}",
               "dealershipId": "{{ref.dealerships.Q7}}",
               "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+              "serviceBayId": "{{bay}}",
               "startTime": "{{start}}"
             }
           },
@@ -134,6 +138,7 @@
               "vehicleId": "{{v.vehicleId}}",
               "dealershipId": "{{ref.dealerships.Q7}}",
               "serviceTypeId": "{{ref.serviceTypes.OIL_CHANGE}}",
+              "serviceBayId": "{{bay}}",
               "startTime": "{{start}}"
             }
           }

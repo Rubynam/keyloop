@@ -5,7 +5,8 @@ import java.util.UUID;
 
 /**
  * Answer of {@code CandidateSelector}: which (bay, technician) pairs a booking should try,
- * in order, or why there are none (candidate-selection.md).
+ * in order, or why there are none (candidate-selection.md). Every pair has the bay the
+ * client chose; only the technician changes.
  *
  * @param outcome why the list is empty, or {@code PAIRS}
  * @param pairs   at most {@code scheduler.booking.max-pairs} pairs; empty unless {@code PAIRS}
@@ -13,9 +14,9 @@ import java.util.UUID;
 public record CandidateResult(Outcome outcome, List<Pair> pairs) {
 
     public enum Outcome {
-        /** No active fitting bay or no qualified technician at all: booking answers 422. */
+        /** The chosen bay is inactive or does not take the vehicle, or no qualified technician: booking answers 422. */
         NOT_SERVICEABLE,
-        /** Resources fit, but every bay or every technician is busy in the window: booking answers 409. */
+        /** Resources fit, but the bay or every technician is busy in the window: booking answers 409. */
         NONE_FREE,
         /** At least one pair to try. */
         PAIRS
