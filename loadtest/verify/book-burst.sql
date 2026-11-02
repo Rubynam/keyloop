@@ -1,7 +1,7 @@
 -- Profile book-burst (81-book-burst): bookings per hot slot against its capacity.
 -- run-ramp.sh runs it after invariants.sql (which already proves no bay / technician /
 -- vehicle is busy twice). :start = when the run began; only rows written since count.
---   docker compose exec -T postgres psql -U scheduler -d scheduler -v start="2026-11-01 12:00:00+00" < loadtest/verify/book-burst.sql
+--   docker compose exec -T "${PG_PRIMARY:-postgres-1}" psql -U scheduler -d scheduler -v start="2026-11-01 12:00:00+00" < loadtest/verify/book-burst.sql
 --
 -- capacity = min(active bays taking the vehicle type, active technicians with the skill and
 -- the vehicle type): what one slot can hold on an empty day.

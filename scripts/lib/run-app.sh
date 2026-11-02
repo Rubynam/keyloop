@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared part of scripts/run-server-api.sh and scripts/run-scheduler-batch.sh.
 # Builds one module's boot jar and runs it on the host JVM against the Docker
-# Postgres/Redis, optionally with a JDWP debug port for IntelliJ "Remote JVM Debug".
+# Postgres/Redis nodes, optionally with a JDWP debug port for IntelliJ "Remote JVM Debug".
 #
 # Caller sets: APP (gradle module), APP_PORT_VAR (env var the app reads its port from),
 # APP_PORT, DEBUG_PORT. Then: run_app "$@"
@@ -16,7 +16,7 @@ Usage: $(basename "$0") [--debug] [--suspend] [--no-build] [--no-infra]
   --debug     open a JDWP port (${DEBUG_PORT}) for IntelliJ "Remote JVM Debug"
   --suspend   with --debug: wait for the debugger before starting (debug start-up code)
   --no-build  run the last built jar (skip ./gradlew :${APP}:bootJar)
-  --no-infra  do not start postgres/redis with docker compose
+  --no-infra  do not start the data nodes (postgres-1/2, redis-1/2) with docker compose
 
 Env overrides: LOCAL_PORT (default ${APP_PORT}), DEBUG_PORT (default ${DEBUG_PORT}), JAVA_OPTS
 EOF
@@ -58,13 +58,15 @@ run_app() {
     # the local app needs its own port next to them
     local port="${LOCAL_PORT:-$APP_PORT}"
     export "$APP_PORT_VAR=$port"
-    export DB_HOST=localhost DB_PORT="${POSTGRES_PORT:-5432}"
-    export REDIS_HOST=localhost REDIS_PORT="${REDIS_PORT:-6379}"
+    # Every data node by its host port; the app picks the writable one (spine AD-9)
+    # (falls back to the old single-node POSTGRES_PORT / REDIS_PORT of an older .env)
+    export DB_HOSTS="localhost:${POSTGRES_1_PORT:-${POSTGRES_PORT:-5432}},localhost:${POSTGRES_2_PORT:-5433}"
+    export REDIS_NODES="localhost:${REDIS_1_PORT:-${REDIS_PORT:-6379}},localhost:${REDIS_2_PORT:-6380}"
     export LOG_PATH="$ROOT/logs"
 
     if $infra; then
-        echo "▶ postgres + redis (docker compose)"
-        docker compose up -d --wait postgres redis
+        echo "▶ postgres-1/2 + redis-1/2 (docker compose)"
+        docker compose up -d --wait postgres-1 postgres-2 redis-1 redis-2
     fi
 
     if declare -F before_start >/dev/null; then

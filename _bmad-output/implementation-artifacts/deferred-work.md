@@ -67,3 +67,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-outbox-relay-claim-relock.md`
   summary: `batch-size: 0` (or negative) makes `OutboxRelay.relay()` spin forever (`tick() == 0 == batchSize`); fixed by the deferred Task 3 `@Positive` validation.
   evidence: Review pass 1 (E3); pre-existing loop condition, same at baseline.
+- source_spec: `_bmad-output/specs/spec-data-replication/stories/1-data-tier-compose-replication.md`
+  summary: Automated check that apps land on the writable Postgres/Redis node (multi-host JDBC targetServerType=primary, Redis masterreplica + read-from upstream) after a role flip.
+  evidence: @ServiceConnection overrides the URL and Redis mode in every IT; with default roles a missing targetServerType still lands on postgres-1, so nothing fails until a real flip. Story 5 should assert app sessions in pg_stat_activity / CLIENT LIST on the new primary.
+- source_spec: `_bmad-output/specs/spec-data-replication/stories/1-data-tier-compose-replication.md`
+  summary: REL-05 Redis fail-open not verified under static master/replica mode (unverified medium).
+  evidence: Fail-open ITs run standalone Redis; settle with an IT or compose check that stops the Redis master and asserts availability still answers from Postgres within the 1s timeout.

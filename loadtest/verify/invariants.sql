@@ -1,6 +1,6 @@
 -- Spec06 §6.3: run after any load profile that writes (load, stress, spike, race).
 -- Expected output: every query returns 0 rows. One row = a double booking got through.
---   docker compose exec -T postgres psql -U scheduler -d scheduler < loadtest/verify/invariants.sql
+--   docker compose exec -T "${PG_PRIMARY:-postgres-1}" psql -U scheduler -d scheduler < loadtest/verify/invariants.sql
 -- INV-04/05 only look at rows written in the last :since (default 1 hour = the load run).
 
 \if :{?since}

@@ -116,8 +116,10 @@ def write(conn, op, latencies):
 
 
 def main():
-    dsn = (f"host={os.getenv('DB_HOST', 'postgres')} port={os.getenv('DB_PORT', '5432')} "
-           f"dbname={os.getenv('POSTGRES_DB', 'scheduler')} user={os.getenv('POSTGRES_USER', 'scheduler')} "
+    # DB_HOSTS = "host:port,host:port" → libpq host/port lists; read-write = the primary only
+    nodes = [n.strip().rsplit(":", 1) for n in os.getenv("DB_HOSTS", "postgres-1:5432").split(",") if n.strip()]
+    dsn = (f"host={','.join(n[0] for n in nodes)} port={','.join(n[1] if len(n) > 1 else '5432' for n in nodes)} "
+           f"target_session_attrs=read-write dbname={os.getenv('POSTGRES_DB', 'scheduler')} user={os.getenv('POSTGRES_USER', 'scheduler')} "
            f"password={os.getenv('POSTGRES_PASSWORD', 'scheduler')}")
     counts, latencies = Counter(), []
     started = time.monotonic()
