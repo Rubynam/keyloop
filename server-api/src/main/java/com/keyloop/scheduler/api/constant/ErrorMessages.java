@@ -23,6 +23,7 @@ public final class ErrorMessages {
     public static final String ENTITY_VEHICLE_TYPE = "Vehicle type";
     public static final String ENTITY_CUSTOMER = "Customer";
     public static final String ENTITY_VEHICLE = "Vehicle";
+    public static final String ENTITY_APPOINTMENT = "Appointment";
 
     /** 400 from the controller edge: {@code detail} plus one {@code errors[]} entry per bad field. */
     public static final String INVALID_REQUEST = "Invalid request";

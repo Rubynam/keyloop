@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -18,6 +19,7 @@ import java.util.UUID;
 import com.keyloop.scheduler.api.config.appointment.ValidationClockConfig;
 import com.keyloop.scheduler.api.dto.appointment.AppointmentResponse;
 import com.keyloop.scheduler.api.dto.appointment.BookingResult;
+import com.keyloop.scheduler.api.exception.NotFoundException;
 import com.keyloop.scheduler.api.exception.appointment.BookingConflictException;
 import com.keyloop.scheduler.api.exception.appointment.OffSlotGridException;
 import com.keyloop.scheduler.api.model.AppointmentStatus;
@@ -250,5 +252,45 @@ class AppointmentControllerTest {
     @Test
     void clockStubIsTheClock() {
         org.assertj.core.api.Assertions.assertThat((Clock) clock).isInstanceOf(MutableClock.class);
+    }
+
+    // ---------------------------------------------------------------- GET by id
+
+    @Test
+    void getByIdIs200WithTheAppointment() throws Exception {
+        when(service.get(ID)).thenReturn(BOOKED);
+
+        mockMvc.perform(get("/api/v1/appointments/" + ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(ID.toString()))
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.dealershipId").value(DEALER.toString()))
+                .andExpect(jsonPath("$.serviceBayId").value(BAY.toString()))
+                .andExpect(jsonPath("$.technicianId").value(TECH.toString()))
+                .andExpect(jsonPath("$.serviceTypeId").value(SERVICE.toString()))
+                .andExpect(jsonPath("$.vehicleId").value(VEHICLE.toString()))
+                .andExpect(jsonPath("$.startTime").value("2026-11-02T02:00:00Z"))
+                .andExpect(jsonPath("$.endTime").value("2026-11-02T03:00:00Z"));
+    }
+
+    @Test
+    void getUnknownIdIs404Problem() throws Exception {
+        when(service.get(ID)).thenThrow(new NotFoundException("Appointment", ID));
+
+        mockMvc.perform(get("/api/v1/appointments/" + ID))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Appointment " + ID + " not found"));
+    }
+
+    @Test
+    void getWithBadUuidIs400OnTheId() throws Exception {
+        mockMvc.perform(get("/api/v1/appointments/not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Invalid request"))
+                .andExpect(jsonPath("$.errors[0].field").value("appointmentId"))
+                .andExpect(jsonPath("$.errors[0].message").value("invalid value"));
+        verifyNoInteractions(service);
     }
 }

@@ -12,6 +12,7 @@ import java.time.temporal.ChronoField;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import com.keyloop.scheduler.api.config.availability.AvailabilityProperties;
 import com.keyloop.scheduler.api.constant.ErrorMessages;
@@ -111,6 +112,13 @@ public class AppointmentServiceImpl implements AppointmentService {
                     .map(stored -> replay(stored, request))
                     .orElseThrow(() -> e);
         }
+    }
+
+    @Override
+    public AppointmentResponse get(UUID appointmentId) {
+        return appointments.findById(appointmentId)
+                .map(AppointmentServiceImpl::response)
+                .orElseThrow(() -> new NotFoundException(ErrorMessages.ENTITY_APPOINTMENT, appointmentId));
     }
 
     private BookingResult bookNew(String idempotencyKey, BookAppointmentRequest request) {
