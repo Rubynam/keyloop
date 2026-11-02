@@ -35,5 +35,7 @@ public final class AppointmentConstants {
     /** Internal signals, never shown to a client. */
     public static final String SLOT_TAKEN = "Slot already taken: %s";
     public static final String RESOURCE_GONE = "Bay or technician no longer fits: %s";
+    /** Reason in {@link #RESOURCE_GONE} when the insert found the bay or technician inactive. */
+    public static final String INACTIVE_RESOURCE = "bay or technician inactive";
     public static final String DUPLICATE_IDEMPOTENCY_KEY = "Idempotency-Key already stored";
 }
