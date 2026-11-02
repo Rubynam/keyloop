@@ -60,6 +60,14 @@
     {
       "key": "appointmentId",
       "value": ""
+    },
+    {
+      "key": "lookupBayId",
+      "value": ""
+    },
+    {
+      "key": "lookupTechnicianId",
+      "value": ""
     }
   ],
   "item": [
@@ -547,6 +555,369 @@
                   "    pm.response.to.have.status(200);",
                   "    pm.expect(body.days).to.have.lengthOf(3);",
                   "    body.days.forEach(d => pm.expect(d.slots).to.be.empty);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Lookups",
+      "description": "GET /api/v1/lookups/availability - real-time check of a service bay AND a qualified technician for the whole window. from, to, dealershipId required; serviceBayId, technicianId, serviceTypeId, vehicleTypeId optional.",
+      "item": [
+        {
+          "name": "Lookup - free pairs (hub, oil change, gasoline car)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lookups/availability?dealershipId={{hubDealershipId}}&from={{futureDate}}T02:00:00Z&to={{futureDate}}T03:00:00Z&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lookups",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}T02:00:00Z"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}T03:00:00Z"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                }
+              ]
+            },
+            "description": "Main hub, 09:00-10:00 local (+07:00) on the rolling future date. Lists every free (bay, qualified technician) pair. Saves the first pair for the 1-1 check."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"200 with free pairs\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.available).to.eql(true);",
+                  "    pm.expect(body.reasons).to.eql([]);",
+                  "    pm.expect(body.pairs.length).to.be.above(0);",
+                  "    pm.expect(body.totalPairs).to.be.at.least(body.pairs.length);",
+                  "    pm.expect(body.from).to.match(/T09:00:00\\+07:00$/);",
+                  "    pm.expect(body.serviceTypeName).to.be.a(\"string\");",
+                  "});",
+                  "pm.collectionVariables.set(\"lookupBayId\", body.pairs[0].serviceBayId);",
+                  "pm.collectionVariables.set(\"lookupTechnicianId\", body.pairs[0].technicianId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup - 1-1 check (bay + technician from previous request)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lookups/availability?dealershipId={{hubDealershipId}}&from={{futureDate}}T02:00:00Z&to={{futureDate}}T03:00:00Z&serviceBayId={{lookupBayId}}&technicianId={{lookupTechnicianId}}&serviceTypeId={{oilChangeServiceTypeId}}&vehicleTypeId={{gasolineCarVehicleTypeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lookups",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}T02:00:00Z"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}T03:00:00Z"
+                },
+                {
+                  "key": "serviceBayId",
+                  "value": "{{lookupBayId}}"
+                },
+                {
+                  "key": "technicianId",
+                  "value": "{{lookupTechnicianId}}"
+                },
+                {
+                  "key": "serviceTypeId",
+                  "value": "{{oilChangeServiceTypeId}}"
+                },
+                {
+                  "key": "vehicleTypeId",
+                  "value": "{{gasolineCarVehicleTypeId}}"
+                }
+              ]
+            },
+            "description": "Every id given: answers one exact slot before confirming. Run the previous request first."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"200 with exactly the asked pair\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.available).to.eql(true);",
+                  "    pm.expect(body.pairs).to.have.lengthOf(1);",
+                  "    pm.expect(body.pairs[0].serviceBayId).to.eql(pm.collectionVariables.get(\"lookupBayId\"));",
+                  "    pm.expect(body.pairs[0].technicianId).to.eql(pm.collectionVariables.get(\"lookupTechnicianId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup - outside business hours (20:00)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lookups/availability?dealershipId={{hubDealershipId}}&from={{futureDate}}T13:00:00Z&to={{futureDate}}T14:00:00Z",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lookups",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}T13:00:00Z"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}T14:00:00Z"
+                }
+              ]
+            },
+            "description": "20:00-21:00 local, after the hub closes at 17:00: no pairs, reason OUTSIDE_BUSINESS_HOURS."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"200, not available, window reason\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.available).to.eql(false);",
+                  "    pm.expect(body.reasons).to.eql([\"OUTSIDE_BUSINESS_HOURS\"]);",
+                  "    pm.expect(body.pairs).to.eql([]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup - 400 missing dealershipId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lookups/availability?from={{futureDate}}T02:00:00Z&to={{futureDate}}T03:00:00Z",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lookups",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}T02:00:00Z"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}T03:00:00Z"
+                }
+              ]
+            },
+            "description": "dealershipId is required: the search is always per dealership."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 problem naming dealershipId\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().detail).to.include(\"dealershipId\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup - 400 to before from",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lookups/availability?dealershipId={{hubDealershipId}}&from={{futureDate}}T03:00:00Z&to={{futureDate}}T02:00:00Z",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lookups",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}T03:00:00Z"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}T02:00:00Z"
+                }
+              ]
+            },
+            "description": "to must be after from."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 problem\", () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().detail).to.include(\"must be after\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup - 404 technician of another dealership",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lookups/availability?dealershipId={{hubDealershipId}}&from={{futureDate}}T02:00:00Z&to={{futureDate}}T03:00:00Z&technicianId={{$guid}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lookups",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "dealershipId",
+                  "value": "{{hubDealershipId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "{{futureDate}}T02:00:00Z"
+                },
+                {
+                  "key": "to",
+                  "value": "{{futureDate}}T03:00:00Z"
+                },
+                {
+                  "key": "technicianId",
+                  "value": "{{$guid}}"
+                }
+              ]
+            },
+            "description": "A bay or technician that is not in the dealership is 404."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 problem\", () => {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.json().detail).to.include(\"Technician\");",
                   "});"
                 ]
               }
