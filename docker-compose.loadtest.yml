@@ -17,10 +17,12 @@ x-locust: &locust
   environment: &locust-env
     LOADTEST_PROFILE: ${LOADTEST_PROFILE:-smoke}
     LOCUST_HOST: ${LOCUST_HOST:-http://nginx}
-    # Profiles ramp / book-ramp only (RampShape): 0 → RAMP_MAX_RPS requests/s
+    # Profiles ramp / book-ramp (RampShape) and book-burst: 0 → RAMP_MAX_RPS requests/s
     RAMP_MAX_RPS: ${RAMP_MAX_RPS:-100}
     RAMP_UP_SECONDS: ${RAMP_UP_SECONDS:-300}
     RAMP_HOLD_SECONDS: ${RAMP_HOLD_SECONDS:-180}
+    # Profile book-burst only (BurstShape): lanes of same-slot waves, paced to RAMP_MAX_RPS
+    BURST_LANES: ${BURST_LANES:-40}
   volumes:
     # Scenarios, thresholds and code are mounted: edit and re-run without a rebuild
     - ./loadtest:/loadtest

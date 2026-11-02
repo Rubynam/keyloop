@@ -3,23 +3,26 @@
 Every request comes from input/<suite>.json, and what must come back from
 expected/<suite>.json (joined by case id, lt/fixtures.py). The users below only decide *who* sends *which* suites, and how often.
 
-    LOADTEST_PROFILE=smoke|load|stress|spike|abuse|race|ramp|book-ramp   (default: smoke)
+    LOADTEST_PROFILE=smoke|load|stress|spike|abuse|race|ramp|book-ramp|book-burst   (default: smoke)
 
 Run through docker-compose.loadtest.yml; see Spec06 §7.
 """
 import json
 import os
 import random
+import time
 import uuid
+from collections import Counter, defaultdict
 from itertools import count
 
 import gevent
 from gevent.event import Event
 from locust import HttpUser, LoadTestShape, between, constant, constant_throughput, events, task
+from locust.clients import HttpSession
 
 from lt import verdict
 from lt.checks import check
-from lt.fixtures import BASE, TOKEN, bind, load_suite, new_context, render, suite_names
+from lt.fixtures import BASE, TOKEN, bind, load_suite, new_context, new_wave, render, suite_names
 
 PROFILE = os.getenv("LOADTEST_PROFILE", "smoke")
 RUN_ID = uuid.uuid4().hex[:8]
@@ -61,17 +64,19 @@ class ScenarioUser(HttpUser):
             if not self.send(case, step, ctx):
                 break
 
-    def send(self, case, step, ctx):
+    def send(self, case, step, ctx, client=None, client_ip=None):
+        """One request; client / client_ip: a wave client's own session and address."""
         req = render(step["request"], ctx)
-        headers = {"X-Forwarded-For": self.client_ip, "X-Request-Id": f"lt-{RUN_ID}-{uuid.uuid4().hex[:12]}",
+        headers = {"X-Forwarded-For": client_ip or self.client_ip, "X-Request-Id": f"lt-{RUN_ID}-{uuid.uuid4().hex[:12]}",
                    **req.get("headers", {})}
         name = step["request"].get("name") or _default_name(step["request"])
-        with self.client.request(req["method"], req["path"], params=req.get("query"), json=req.get("body"),
+        with (client or self.client).request(req["method"], req["path"], params=req.get("query"), json=req.get("body"),
                                  headers=headers, name=name, catch_response=True) as resp:
             try:
                 body = resp.json()
             except ValueError:
                 body = None
+            ctx["status"] = resp.status_code
             errs = check(render(step["expect"], ctx), resp.status_code, resp.headers, body, resp.elapsed.total_seconds() * 1000)
             label = case["id"] + (f"/{step['id']}" if "steps" in case else "")
             if errs:
@@ -161,6 +166,50 @@ class RaceUser(ScenarioUser):
             gevent.spawn_later(1, self.environment.runner.quit)
 
 
+class BurstCustomer(ScenarioUser):
+    """One lane of waves (81-book-burst). A wave = `clients` customers booking ONE slot at the
+    same instant: each client is a greenlet with its own connection and address, parked on a
+    gate; the gate opens once all are parked. BurstShape starts BURST_LANES lanes, and each
+    lane paces its waves so that all lanes together send RAMP_MAX_RPS requests/s.
+
+        lane 1  [wave BB-05: 25 x POST, same slot] ··· [wave BB-01: 10 x POST] ···
+        lane 2       [wave BB-04: 20 x POST] ··· [wave BB-06: 6 x POST, one car] ···
+    """
+    suites = ("81-book-burst",)
+    wave_no = defaultdict(count)                # case id -> next wave: each wave its own slot
+
+    def on_start(self):
+        super().on_start()
+        lanes, rps = int(os.getenv("BURST_LANES", "40")), int(os.getenv("RAMP_MAX_RPS", "150"))
+        avg = sum(c["weight"] * c["wave"]["clients"] for c in self.cases) / sum(c["weight"] for c in self.cases)
+        self.waves_per_s = rps / (lanes * avg)
+        # Kept for the whole run: keep-alive connections, so a wave measures booking, not TCP setup
+        size = max(c["wave"]["clients"] for c in self.cases)
+        self.sessions = [HttpSession(self.host, self.environment.events.request, self) for _ in range(size)]
+        self.ips = [f"198.18.{random.randint(0, 255)}.{i + 1}" for i in range(size)]
+
+    def wait_time(self):
+        return constant_throughput(self.waves_per_s)(self)
+
+    def run_case(self):
+        case = random.choices(self.cases, weights=[c["weight"] for c in self.cases])[0]
+        ctxs = [bind(case, ctx) for ctx in new_wave(case, RUN_ID, next(BurstCustomer.wave_no[case["id"]]))]
+        gate, sent = Event(), []
+
+        def client(i, ctx):
+            gate.wait()
+            sent.append(time.perf_counter())
+            self.send(case, case, ctx, self.sessions[i], self.ips[i])
+
+        jobs = [gevent.spawn(client, i, ctx) for i, ctx in enumerate(ctxs)]
+        gevent.sleep(0)                         # every client runs up to the gate
+        gate.set()
+        gevent.joinall(jobs)
+        done = time.perf_counter()
+        verdict.WAVES[case["id"]].append((Counter(ctx.get("status") for ctx in ctxs),
+                                          (max(sent) - min(sent)) * 1000, (done - min(sent)) * 1000))
+
+
 PROFILES = {
     "smoke": (SmokeUser,),
     "load": (BrowsingCustomer, BookingCustomer),
@@ -170,8 +219,10 @@ PROFILES = {
     "race": (RaceUser,),
     "ramp": (RampCustomer,),
     "book-ramp": (BookingRampCustomer,),
+    "book-burst": (BurstCustomer,),
 }
-for _cls in (SmokeUser, BrowsingCustomer, BookingCustomer, RampCustomer, BookingRampCustomer, AbusiveClient, RaceUser):
+for _cls in (SmokeUser, BrowsingCustomer, BookingCustomer, RampCustomer, BookingRampCustomer, BurstCustomer,
+             AbusiveClient, RaceUser):
     _cls.abstract = _cls not in PROFILES[PROFILE]
 del _cls                                        # Locust collects classes from module globals
 
@@ -215,6 +266,22 @@ elif PROFILE in ("ramp", "book-ramp"):
                 return self.max_rps, self.max_rps
             return None
 
+elif PROFILE == "book-burst":
+    class BurstShape(LoadTestShape):
+        """Lanes 1 → BURST_LANES over RAMP_UP_SECONDS, hold RAMP_HOLD_SECONDS, stop. A lane's
+        wave rate is fixed, so requests/s grow with the lanes up to RAMP_MAX_RPS."""
+        lanes = int(os.getenv("BURST_LANES", "40"))
+        ramp_s = int(os.getenv("RAMP_UP_SECONDS", "30"))
+        hold_s = int(os.getenv("RAMP_HOLD_SECONDS", "240"))
+
+        def tick(self):
+            t = self.get_run_time()
+            if t < self.ramp_s:
+                return max(1, round(self.lanes * t / self.ramp_s)), self.lanes
+            if t < self.ramp_s + self.hold_s:
+                return self.lanes, self.lanes
+            return None
+
 
 @events.init.add_listener
 def _show_test_data(environment, **_):
@@ -230,8 +297,9 @@ def _show_test_data(environment, **_):
 def _verdict(environment, **_):
     if environment.runner is None or type(environment.runner).__name__ == "WorkerRunner":
         return
-    aggregates = [c for u in PROFILES[PROFILE] for s in u.suites for c in load_suite(s)["cases"] if "aggregate" in c]
-    report = verdict.evaluate(environment, PROFILE, THRESHOLDS, aggregates)
+    cases = [c for u in PROFILES[PROFILE] for s in u.suites for c in load_suite(s)["cases"]]
+    report = verdict.evaluate(environment, PROFILE, THRESHOLDS, [c for c in cases if "aggregate" in c],
+                              [c for c in cases if "perWave" in c])
     print(json.dumps(report, indent=2, ensure_ascii=False))
     if not report["ok"]:
         environment.process_exit_code = 1

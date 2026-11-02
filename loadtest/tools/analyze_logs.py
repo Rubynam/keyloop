@@ -1,12 +1,13 @@
 """Reads everything one ramp run left behind and lists potential bugs.
 
-Inputs (written by loadtest/run-ramp.sh into one run folder; <p> = profile, ramp or book-ramp):
+Inputs (written by loadtest/run-ramp.sh into one run folder; <p> = profile, ramp, book-ramp or book-burst):
     logs/*.log                     Log4j2 files of server-api replicas and scheduler-batch
     <p>_stats.csv, <p>_stats_history.csv, <p>_failures.csv     Locust
     verdict-<p>.json               Locust budgets (thresholds.json) + booking status mix
     ramp_simulator.json            booking simulator summary (profile ramp only)
     docker_stats.csv               CPU / memory samples per container
     invariants.txt, relay_lag.txt, redis_info.txt, pg_stats.txt   post-run probes
+    burst_check.txt                bookings per hot slot vs capacity (profile book-burst only)
 
     python3 loadtest/tools/analyze_logs.py loadtest/reports/ramp-<ts>
     python3 loadtest/tools/analyze_logs.py loadtest/reports/book-ramp-<ts> book-ramp
@@ -60,6 +61,9 @@ DETECTORS = [
     ("thread-starvation", "Thread pool starvation", r"Thread starvation|clock leap|pool is full|RejectedExecution"),
     ("heartbeat-failed", "Heartbeat job did not complete", r"heartbeatJob (?:failed|finished with status (?!COMPLETED))"),
 ]
+
+
+PROBES = ("cache_freshness.txt", "relay_lag.txt", "invariants.txt", "burst_check.txt", "redis_info.txt", "pg_stats.txt")
 
 
 def norm(msg):
@@ -232,6 +236,9 @@ def findings(logs, locust, docker, sim, run, profile):
     bad = [b for b in re.split(r"\n(?=INV-)", inv) if re.search(r"\(\s*[1-9]\d* rows?\)", b)]
     for block in bad:
         add("high", "data", f"Invariant broken: {block.splitlines()[0]}", block[:500])
+    over = re.search(r"BB-INV-01.*?\((\d+) rows?\)", text(run, "burst_check.txt"), re.S)
+    if over and int(over.group(1)):
+        add("high", "data", f"{over.group(1)} hot slots hold more bookings than their capacity", "burst_check.txt BB-INV-01")
     lag = text(run, "relay_lag.txt")
     m = re.search(r"^(\d+)\|(\d+)\|(\d+)\|([\d.]+)\|([\d.]+)\|([\d.]+)$", lag, re.M)
     if m:
@@ -263,7 +270,8 @@ def markdown(result):
           "| Endpoint | Requests | Failures | p50 | p95 | p99 | max |", "|---|---|---|---|---|---|---|"]
     for n, e in loc["endpoints"].items():
         L.append(f"| {n} | {e['requests']} | {e['failures']} | {e['p50']} | {e['p95']} | {e['p99']} | {e['max']} |")
-    L += ["", "### Latency vs load (Aggregated, per 20-user band; 1 user = 1 RPS)", "",
+    unit = "1 user = 1 wave lane" if result["profile"] == "book-burst" else "1 user = 1 RPS"
+    L += ["", f"### Latency vs load (Aggregated, per 20-user band; {unit})", "",
           "| Users | Avg RPS | Max p95 ms | Max failures/s |", "|---|---|---|---|"]
     for b, c in loc["curve"].items():
         L.append(f"| {b}–{min(b + 19, 100)} | {c['rps']} | {c['p95MsMax']} | {c['failuresPerS']} |")
@@ -292,9 +300,20 @@ def markdown(result):
         L += ["", "## Booking outcomes (status mix per case)", "", "| Case | Counts | OK |", "|---|---|---|"]
         for cid, r in outcomes.items():
             L.append(f"| {cid} | {', '.join(f'{s}: {n}' for s, n in sorted(r['counts'].items()))} | {r['ok']} |")
+    waves = (loc["verdict"] or {}).get("waves", {})
+    if waves:
+        L += ["", "## Waves (same slot, same instant)", "",
+              "| Case | Waves | Exact | Over capacity | 201s per wave → waves | Send skew p50 / max ms | Wave p50 / p95 ms |",
+              "|---|---|---|---|---|---|---|"]
+        for cid, w in waves.items():
+            L.append(f"| {cid} | {w['waves']} | {w['exact']} | {w['over']} | "
+                     f"{', '.join(f'{k}→{v}' for k, v in w['201PerWave'].items())} | "
+                     f"{w['skewMs']['p50']} / {w['skewMs']['max']} | {w['waveMs']['p50']} / {w['waveMs']['p95']} |")
     if result["simulator"]:
         L += ["", "## Booking simulator", "", "```json", json.dumps(result["simulator"], indent=2), "```"]
-    for name in ("cache_freshness.txt", "relay_lag.txt", "invariants.txt", "redis_info.txt", "pg_stats.txt"):
+    for name in PROBES:
+        if name == "burst_check.txt" and not result["probes"].get(name):
+            continue                            # book-burst only
         L += ["", f"## {name}", "", "```", result["probes"].get(name, "").strip() or "(missing)", "```"]
     return "\n".join(L) + "\n"
 
@@ -307,7 +326,7 @@ def main(run, profile="ramp"):
     locust = analyze_locust(run, verdict, profile)
     docker = analyze_docker(run)
     result = {"run": run.name, "profile": profile, "logs": logs, "locust": locust, "docker": docker, "simulator": sim,
-              "probes": {n: text(run, n) for n in ("cache_freshness.txt", "relay_lag.txt", "invariants.txt", "redis_info.txt", "pg_stats.txt")}}
+              "probes": {n: text(run, n) for n in PROBES}}
     result["findings"] = findings(logs, locust, docker, sim, run, profile)
     (run / "analysis.json").write_text(json.dumps(result, indent=2, ensure_ascii=False, default=str) + "\n")
     (run / "analysis.md").write_text(markdown(result))

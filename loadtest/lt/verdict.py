@@ -14,6 +14,8 @@ REPORTS = BASE / "reports"
 # Cases with an "aggregate" expectation (standalone runs only: race, abuse):
 # case id -> list of (status, sameValue)
 AGGREGATES = defaultdict(list)
+# Wave cases (81-book-burst): case id -> list of (Counter of statuses, send skew ms, wave ms)
+WAVES = defaultdict(list)
 
 
 def _budget(entry, rule):
@@ -51,7 +53,39 @@ def aggregate_verdict(cases):
     return result
 
 
-def evaluate(environment, profile, thresholds, aggregate_cases=()):
+def _pct(values, q):
+    values = sorted(values)
+    return round(values[min(len(values) - 1, int(q * len(values)))], 1) if values else None
+
+
+def wave_verdict(cases, rule):
+    """Each wave against its perWave count. More 201s than expected = double booking (always
+    an error); exact share below rule['minExactRatio'] = customers turned away while a pair
+    was free. Skew = first → last request sent: how well the wave lined up."""
+    result = {}
+    for case in cases:
+        exp, waves = case["perWave"], WAVES.get(case["id"], [])
+        want = int(exp.get("201", 0))
+        exact = sum(1 for c, _, _ in waves if all(c.get(int(s), 0) == n for s, n in exp.items()) and sum(c.values()) == sum(exp.values()))
+        over = sum(1 for c, _, _ in waves if c.get(201, 0) > want)
+        fill = Counter(c.get(201, 0) for c, _, _ in waves)
+        errs = []
+        if not waves:
+            errs.append("no wave sent")
+        if over:
+            errs.append(f"{over} waves with more than {want} x 201 (double booking)")
+        ratio = exact / len(waves) if waves else 0
+        if waves and ratio < rule.get("minExactRatio", 1):
+            errs.append(f"only {exact}/{len(waves)} waves ({ratio:.1%}) ended {exp}")
+        result[case["id"]] = {"goal": case["goal"], "waves": len(waves), "exact": exact, "over": over,
+                              "201PerWave": {str(k): v for k, v in sorted(fill.items())},
+                              "skewMs": {"p50": _pct([s for _, s, _ in waves], .5), "max": _pct([s for _, s, _ in waves], 1)},
+                              "waveMs": {"p50": _pct([d for _, _, d in waves], .5), "p95": _pct([d for _, _, d in waves], .95)},
+                              "ok": not errs, "errors": errs}
+    return result
+
+
+def evaluate(environment, profile, thresholds, aggregate_cases=(), wave_cases=()):
     stats = environment.stats
     report = {"profile": profile, "endpoints": {}, "errors": []}
 
@@ -80,6 +114,10 @@ def evaluate(environment, profile, thresholds, aggregate_cases=()):
     if aggregate_cases:
         report["aggregates"] = aggregate_verdict(aggregate_cases)
         report["errors"] += [f"{cid}: {x}" for cid, r in report["aggregates"].items() for x in r["errors"]]
+
+    if wave_cases:
+        report["waves"] = wave_verdict(wave_cases, rules.get("waves", {}))
+        report["errors"] += [f"{cid}: {x}" for cid, r in report["waves"].items() for x in r["errors"]]
 
     report["ok"] = not report["errors"]
     REPORTS.mkdir(exist_ok=True)
