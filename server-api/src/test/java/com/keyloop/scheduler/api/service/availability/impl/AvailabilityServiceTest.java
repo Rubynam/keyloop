@@ -26,6 +26,7 @@ import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
 import com.keyloop.scheduler.api.model.availability.ServiceBay;
 import com.keyloop.scheduler.api.model.availability.ServiceType;
+import com.keyloop.scheduler.api.model.availability.Technician;
 import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
 import com.keyloop.scheduler.api.support.PassThroughAvailabilityCache;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,8 +61,13 @@ class AvailabilityServiceTest {
     }
 
     private void resources(List<UUID> technicians, Booking... bookings) {
-        when(repository.findQualifiedTechnicianIds(DEALER, SERVICE, VEHICLE)).thenReturn(technicians);
+        when(repository.findQualifiedTechnicians(DEALER, SERVICE, VEHICLE))
+                .thenReturn(technicians.stream().map(id -> new Technician(id, nameOf(id))).toList());
         when(repository.findBookings(any(), any(), any(), any(), any())).thenReturn(List.of(bookings));
+    }
+
+    private static String nameOf(UUID technician) {
+        return technician.equals(TECH_T) ? "Tech T" : "Tech U";
     }
 
     private static Booking booking(UUID bay, UUID tech, String from, String to) {
@@ -169,6 +175,33 @@ class AvailabilityServiceTest {
 
         verify(repository).findBookings(DEALER, List.of(BAY_A), List.of(TECH_T),
                 Instant.parse(DAY + "T00:00:00Z"), Instant.parse(DAY.plusDays(1) + "T00:00:00Z"));
+    }
+
+    @Test
+    void eachSlotNamesTheTechnicianWithTheFewestJobsThatDay() {
+        // T has a job on bay B at 14:00, U has none: U gets every slot it is free for
+        resources(List.of(TECH_T, TECH_U), booking(BAY_B, TECH_T, "14:00", "15:00"));
+
+        List<AvailabilityResponse.Slot> slots = find(LONG_AGO).days().getFirst().slots();
+
+        assertThat(slots).allSatisfy(slot -> {
+            assertThat(slot.technicianId()).isEqualTo(TECH_U);
+            assertThat(slot.technicianName()).isEqualTo("Tech U");
+        });
+    }
+
+    @Test
+    void busyTechnicianIsNotNamedForItsBusyWindow() {
+        // U is busy 09:00-10:00 on bay B; T has two jobs elsewhere in the day
+        resources(List.of(TECH_T, TECH_U), booking(BAY_B, TECH_U, "09:00", "10:00"),
+                booking(BAY_B, TECH_T, "13:00", "14:00"), booking(BAY_B, TECH_T, "15:00", "16:00"));
+
+        List<AvailabilityResponse.Slot> slots = find(LONG_AGO).days().getFirst().slots();
+
+        assertThat(slots).filteredOn(s -> s.start().toLocalTime().toString().equals("09:00"))
+                .singleElement().extracting(AvailabilityResponse.Slot::technicianId).isEqualTo(TECH_T);
+        assertThat(slots).filteredOn(s -> s.start().toLocalTime().toString().equals("11:00"))
+                .singleElement().extracting(AvailabilityResponse.Slot::technicianId).isEqualTo(TECH_U);
     }
 
     @Test

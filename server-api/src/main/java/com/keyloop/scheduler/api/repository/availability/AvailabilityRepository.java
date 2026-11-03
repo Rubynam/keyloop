@@ -10,6 +10,7 @@ import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
 import com.keyloop.scheduler.api.model.availability.ServiceBay;
 import com.keyloop.scheduler.api.model.availability.ServiceType;
+import com.keyloop.scheduler.api.model.availability.Technician;
 
 /**
  * Read-only data access for the availability query and candidate selection. It gives
@@ -23,6 +24,7 @@ import com.keyloop.scheduler.api.model.availability.ServiceType;
  * findServiceBay(D1, B1, SUV)               → ServiceBay("Bay 1", true, true)
  * findFittingBayIds(D1, SUV)                → [B1, B2]
  * findQualifiedTechnicianIds(D1, OIL, SUV)  → [T1]
+ * findQualifiedTechnicians(D1, OIL, SUV)    → [Technician(T1, "An")]
  * findBookings(D1, [B1,B2], [T1], 09:00, 17:00)
  *                                           → [Booking(B1, T1, 10:00, 11:00)]
  * </pre>
@@ -89,6 +91,16 @@ public interface AvailabilityRepository {
      * </pre>
      */
     List<UUID> findQualifiedTechnicianIds(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId);
+
+    /**
+     * Same technicians as {@link #findQualifiedTechnicianIds}, with their names. The
+     * availability read uses it to name the technician of each free slot.
+     *
+     * <pre>
+     * (D1, OIL, SUV) → [Technician(T1, "An")]    T2 has no SUV certificate
+     * </pre>
+     */
+    List<Technician> findQualifiedTechnicians(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId);
 
     /**
      * Non-cancelled appointments that hold one of the given bays or technicians and

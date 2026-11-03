@@ -27,13 +27,16 @@ import com.keyloop.scheduler.api.model.availability.Dealership;
 import com.keyloop.scheduler.api.model.availability.Interval;
 import com.keyloop.scheduler.api.model.availability.ServiceBay;
 import com.keyloop.scheduler.api.model.availability.ServiceType;
+import com.keyloop.scheduler.api.model.availability.Technician;
 import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
 import com.keyloop.scheduler.api.service.availability.AvailabilityService;
+import com.keyloop.scheduler.api.service.availability.impl.SlotCalculator.TechnicianSchedule;
 import org.springframework.stereotype.Service;
 
 /**
  * {@link AvailabilityService} over the versioned cache and PostgreSQL (spec-read-availability,
- * DLD §8). Slots are for the one bay the client chose. Each local date is read through the cache ({@link AvailabilityCache},
+ * DLD §8). Slots are for the one bay the client chose; each names the technician the
+ * booking rule would pick. Each local date is read through the cache ({@link AvailabilityCache},
  * spec-availability-ops); a miss computes the full day from PostgreSQL. Slots that already
  * started are dropped per request, after the cache.
  *
@@ -98,7 +101,8 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 
         // Only the asked bay; an inactive or non-fitting bay gives empty days
         List<UUID> bayIds = serviceBay.fits() ? List.of(serviceBayId) : List.of();
-        List<UUID> technicianIds = repository.findQualifiedTechnicianIds(dealershipId, serviceTypeId, vehicleTypeId);
+        List<Technician> technicians = repository.findQualifiedTechnicians(dealershipId, serviceTypeId, vehicleTypeId);
+        List<UUID> technicianIds = technicians.stream().map(Technician::id).toList();
 
         Map<UUID, List<Interval>> bayBusy = emptySchedules(bayIds);
         Map<UUID, List<Interval>> technicianBusy = emptySchedules(technicianIds);
@@ -108,7 +112,8 @@ public class AvailabilityServiceImpl implements AvailabilityService {
             Instant spanEnd = to.plusDays(1).atStartOfDay(zone).toInstant();
             for (Booking b : repository.findBookings(dealershipId, bayIds, technicianIds, spanStart, spanEnd)) {
                 Interval busy = new Interval(b.start(), b.end());
-                // Bookings of a qualified technician on another bay also block this bay's slot
+                // Bookings of a qualified technician on another bay also block this bay's slot,
+                // and count as its jobs of that day
                 List<Interval> bay = bayBusy.get(b.serviceBayId());
                 if (bay != null) {
                     bay.add(busy);
@@ -123,7 +128,9 @@ public class AvailabilityServiceImpl implements AvailabilityService {
         Map<LocalDate, List<Slot>> result = new HashMap<>();
         for (AvailabilityResponse.Day day : SlotCalculator.compute(from, to, zone,
                 dealership.openMinute(), dealership.closeMinute(), duration, properties.stepMinutes(),
-                bayBusy.values(), technicianBusy.values())) {
+                bayBusy.values(), technicians.stream()
+                        .map(t -> new TechnicianSchedule(t, technicianBusy.get(t.id())))
+                        .toList())) {
             if (wanted.contains(day.date())) {
                 result.put(day.date(), day.slots());
             }

@@ -18,6 +18,7 @@ import com.keyloop.scheduler.api.dto.availability.AvailabilityResponse.Slot;
 import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
 import com.keyloop.scheduler.api.model.availability.ServiceBay;
+import com.keyloop.scheduler.api.model.availability.Technician;
 import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
 import com.keyloop.scheduler.api.service.availability.impl.AvailabilityServiceImpl;
 import com.keyloop.scheduler.api.support.IntegrationTest;
@@ -86,6 +87,8 @@ class AvailabilityRepositoryIT extends IntegrationTest {
         assertThat(repository.findFittingBayIds(dealer, vehicleType)).containsExactly(fittingBay).doesNotContain(inactiveBay);
         assertThat(repository.findQualifiedTechnicianIds(dealer, service, vehicleType))
                 .containsExactly(qualifiedTech).doesNotContain(uncertifiedTech);
+        assertThat(repository.findQualifiedTechnicians(dealer, service, vehicleType))
+                .containsExactly(new Technician(qualifiedTech, "Tech qualified"));
     }
 
     @Test

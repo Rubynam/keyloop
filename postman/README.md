@@ -23,8 +23,8 @@ To hit a host-run API (`scripts/run-server-api.sh`), set `baseUrl` to `http://lo
 | Folder | Request | Checks |
 |---|---|---|
 | System | Ping | `200 {"status":"ok"}` |
-| Availability | Happy path (hub Bay 01, oil change, gasoline car) | triple + `serviceBayId`/`serviceBayName` echoed, every date listed, 15-min starts, `+07:00`, 60-min windows inside 08:00–17:00, no technician ids |
-| | Back-to-back (Riverside, 2026-11-03) | `Asia/Ho_Chi_Minh`, date listed; job 08:00–09:00 on the only pair → 09:00 offered, 08:00–08:45 not |
+| Availability | Happy path (hub Bay 01, oil change, gasoline car) | triple + `serviceBayId`/`serviceBayName` echoed, every date listed, 15-min starts, `+07:00`, 60-min windows inside 08:00–17:00, each slot has `technicianId` + `technicianName` (the technician a booking would get: fewest jobs that day, then id) |
+| | Back-to-back (Riverside, 2026-11-03) | `Asia/Ho_Chi_Minh`, date listed; job 08:00–09:00 on the only pair → 09:00 offered, 08:00–08:45 not; every slot names that one technician |
 | | Fully booked kiosk (2026-11-04) | `Asia/Singapore`, date listed with no slots |
 | | DST end (New York, 2026-10-31..11-02) | per date: slots present, `-04:00` before / `-05:00` after, starts on the 07:00–18:00 wall clock, last at 18:00 |
 | | Open 24h (roadside hub) | last slot `23:00Z`–`00:00Z` next day |

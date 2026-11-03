@@ -41,6 +41,7 @@ class AvailabilityControllerTest {
     private static final UUID SERVICE = UUID.fromString("01941f97-5ce8-7aed-ac5f-7495f4c18226");
     private static final UUID VEHICLE = UUID.fromString("01941f29-7fe8-752e-89a7-834df2a74de4");
     private static final UUID BAY = UUID.fromString("01942976-3400-7a11-8c3b-5f2a1e0d9b44");
+    private static final UUID TECH = UUID.fromString("01942976-3400-7b22-9d4c-6a3b2f1e0c55");
     private static final LocalDate FROM = LocalDate.of(2026, 10, 31);
     private static final LocalDate TO = LocalDate.of(2026, 11, 1);
 
@@ -65,7 +66,7 @@ class AvailabilityControllerTest {
         when(service.find(DEALER, BAY, SERVICE, VEHICLE, FROM, TO)).thenReturn(new AvailabilityResponse(
                 DEALER, "Hub", BAY, "Bay 1", SERVICE, "Oil change", VEHICLE, "SUV", "America/New_York", 60, List.of(
                         new Day(FROM, List.of(new Slot(OffsetDateTime.parse("2026-10-31T07:00-04:00"),
-                                OffsetDateTime.parse("2026-10-31T08:00-04:00")))),
+                                OffsetDateTime.parse("2026-10-31T08:00-04:00"), TECH, "An Nguyen"))),
                         new Day(TO, List.of()))));
 
         mockMvc.perform(request("2026-10-31", "2026-11-01"))
@@ -84,9 +85,10 @@ class AvailabilityControllerTest {
                 .andExpect(jsonPath("$.days[0].date").value("2026-10-31"))
                 .andExpect(jsonPath("$.days[0].slots[0].start").value("2026-10-31T07:00:00-04:00"))
                 .andExpect(jsonPath("$.days[0].slots[0].end").value("2026-10-31T08:00:00-04:00"))
+                .andExpect(jsonPath("$.days[0].slots[0].technicianId").value(TECH.toString()))
+                .andExpect(jsonPath("$.days[0].slots[0].technicianName").value("An Nguyen"))
                 .andExpect(jsonPath("$.days[1].date").value("2026-11-01"))
-                .andExpect(jsonPath("$.days[1].slots.length()").value(0))
-                .andExpect(content().string(not(containsString("technician"))));
+                .andExpect(jsonPath("$.days[1].slots.length()").value(0));
     }
 
     @Test
