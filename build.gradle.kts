@@ -4,9 +4,11 @@ plugins {
 }
 
 val springBootBom = libs.spring.boot.bom
+val jacocoVersion = libs.versions.jacoco.get()
 
 subprojects {
     apply(plugin = "java")
+    apply(plugin = "jacoco")
 
     group = "com.keyloop.scheduler"
     version = "0.1.0-SNAPSHOT"
@@ -40,6 +42,19 @@ subprojects {
 
     tasks.withType<Test>().configureEach {
         useJUnitPlatform()
+    }
+
+    // Coverage: every test run writes build/reports/jacoco/test/ (HTML for people, XML/CSV for tools)
+    extensions.configure<JacocoPluginExtension> {
+        toolVersion = jacocoVersion
+    }
+    tasks.named<Test>("test") { finalizedBy("jacocoTestReport") }
+    tasks.named<JacocoReport>("jacocoTestReport") {
+        reports {
+            xml.required = true
+            csv.required = true
+            html.required = true
+        }
     }
 
     // Apps: only the executable boot jar, named after the module (used by the Dockerfiles).
