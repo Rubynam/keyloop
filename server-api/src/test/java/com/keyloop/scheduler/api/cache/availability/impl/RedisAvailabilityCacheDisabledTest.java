@@ -36,7 +36,8 @@ class RedisAvailabilityCacheDisabledTest {
                 Duration.ZERO, Duration.ZERO, Duration.ZERO);
         RedisAvailabilityCache cache = new RedisAvailabilityCache(redis, mock(RedisScript.class),
                 JsonMapper.builder().build(), off, ObservationRegistry.NOOP);
-        Slot slot = new Slot(OffsetDateTime.parse("2030-01-07T09:00Z"), OffsetDateTime.parse("2030-01-07T10:00Z"));
+        Slot slot = new Slot(OffsetDateTime.parse("2030-01-07T09:00Z"), OffsetDateTime.parse("2030-01-07T10:00Z"),
+                UUID.randomUUID(), "An");
         Map<LocalDate, List<Slot>> loaded = Map.of(DAY_1, List.of(slot), DAY_2, List.of());
         Map<Set<LocalDate>, Integer> calls = new HashMap<>();
 

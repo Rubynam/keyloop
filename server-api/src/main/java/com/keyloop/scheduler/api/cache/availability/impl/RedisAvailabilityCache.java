@@ -10,6 +10,9 @@ import static com.keyloop.scheduler.api.constant.availability.AvailabilityConsta
 import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.SLOTS_KEY_PREFIX;
 import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.SLOT_FIELD_END;
 import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.SLOT_FIELD_START;
+import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.SLOT_FIELD_TECHNICIAN_ID;
+import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.SLOT_FIELD_TECHNICIAN_NAME;
+import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.SLOT_SCHEMA;
 import static com.keyloop.scheduler.api.constant.availability.AvailabilityConstants.VERSION_KEY_PREFIX;
 
 import java.time.Duration;
@@ -50,10 +53,12 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <h2>Keys</h2>
  * <pre>
- * avail:ver:{dealerId}:{date}                                                version, bumped by the relay
- * avail:{dealerId}:{date}:v{ver}:{bayId}:{serviceTypeId}:{vehicleTypeId}      JSON slot list of the full day
- * avail:lock:{dealerId}:{date}:v{ver}:{bayId}:{serviceTypeId}:{vehicleTypeId} rebuild lock, owner token
+ * avail:ver:{dealerId}:{date}                                                       version, bumped by the relay
+ * avail:{dealerId}:{date}:v{ver}:s2:{bayId}:{serviceTypeId}:{vehicleTypeId}      JSON slot list of the full day
+ * avail:lock:{dealerId}:{date}:v{ver}:s2:{bayId}:{serviceTypeId}:{vehicleTypeId} rebuild lock, owner token
  * </pre>
+ * {@code s2} is the shape of the slot JSON ({@code SLOT_SCHEMA}). A new shape gets a new
+ * segment, so an old entry is never parsed by new code; it expires by its own TTL.
  *
  * <h2>Why the version stays per dealership day, not per bay</h2>
  * Technicians are shared by all bays. A booking on bay B1 with technician T1 makes T1
@@ -134,13 +139,13 @@ public class RedisAvailabilityCache implements AvailabilityCache {
     static String slotsKey(UUID dealershipId, LocalDate date, long version, UUID serviceBayId, UUID serviceTypeId,
                           UUID vehicleTypeId) {
         return SLOTS_KEY_PREFIX + dealershipId + KEY_SEPARATOR + date + KEY_VERSION_MARK + version
-                + KEY_SEPARATOR + serviceBayId + KEY_SEPARATOR + serviceTypeId + KEY_SEPARATOR + vehicleTypeId;
+                + KEY_SEPARATOR + SLOT_SCHEMA + KEY_SEPARATOR + serviceBayId + KEY_SEPARATOR + serviceTypeId + KEY_SEPARATOR + vehicleTypeId;
     }
 
     static String lockKey(UUID dealershipId, LocalDate date, long version, UUID serviceBayId, UUID serviceTypeId,
                           UUID vehicleTypeId) {
         return LOCK_KEY_PREFIX + dealershipId + KEY_SEPARATOR + date + KEY_VERSION_MARK + version
-                + KEY_SEPARATOR + serviceBayId + KEY_SEPARATOR + serviceTypeId + KEY_SEPARATOR + vehicleTypeId;
+                + KEY_SEPARATOR + SLOT_SCHEMA + KEY_SEPARATOR + serviceBayId + KEY_SEPARATOR + serviceTypeId + KEY_SEPARATOR + vehicleTypeId;
     }
 
     @Override
@@ -304,7 +309,9 @@ public class RedisAvailabilityCache implements AvailabilityCache {
             // Parsed by hand: a JSON date mapper would move the offset to UTC
             for (JsonNode slot : json.readTree(value)) {
                 slots.add(new Slot(OffsetDateTime.parse(slot.required(SLOT_FIELD_START).asString()),
-                        OffsetDateTime.parse(slot.required(SLOT_FIELD_END).asString())));
+                        OffsetDateTime.parse(slot.required(SLOT_FIELD_END).asString()),
+                        UUID.fromString(slot.required(SLOT_FIELD_TECHNICIAN_ID).asString()),
+                        slot.required(SLOT_FIELD_TECHNICIAN_NAME).asString()));
             }
             return List.copyOf(slots);
         } catch (RuntimeException e) {

@@ -199,8 +199,12 @@
                   "    pm.expect(body.serviceBayId).to.eql(pm.environment.get(\"hubBayId\"));",
                   "    pm.expect(body.serviceBayName).to.eql(\"Bay 01\");",
                   "});",
-                  "pm.test(\"no technician ids exposed\", () => {",
-                  "    pm.expect(pm.response.text()).to.not.match(/technician/i);",
+                  "pm.test(\"each slot names its technician (id + name)\", () => {",
+                  "    const all = body.days.flatMap(d => d.slots);",
+                  "    all.forEach(s => {",
+                  "        pm.expect(s.technicianId).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);",
+                  "        pm.expect(s.technicianName).to.be.a(\"string\").and.not.be.empty;",
+                  "    });",
                   "});"
                 ]
               }
@@ -278,6 +282,10 @@
                   "    pm.expect(starts).to.include(\"2026-11-03T09:00:00+07:00\");",
                   "    [\"08:00\", \"08:15\", \"08:30\", \"08:45\"].forEach(t =>",
                   "        pm.expect(starts).to.not.include(`2026-11-03T${t}:00+07:00`));",
+                  "});",
+                  "pm.test(\"the only qualified technician names every slot\", () => {",
+                  "    pm.expect(new Set(day.slots.map(s => s.technicianId)).size).to.be.at.most(1);",
+                  "    day.slots.forEach(s => pm.expect(s.technicianName).to.be.a(\"string\").and.not.be.empty);",
                   "});"
                 ]
               }

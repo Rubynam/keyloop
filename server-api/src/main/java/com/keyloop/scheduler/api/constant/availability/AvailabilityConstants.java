@@ -44,6 +44,12 @@ public final class AvailabilityConstants {
     public static final String LOCK_KEY_PREFIX = "avail:lock:";
     public static final String KEY_SEPARATOR = ":";
     public static final String KEY_VERSION_MARK = ":v";
+    /**
+     * Shape of the cached slot JSON, a segment of the slot-list and lock keys. Change it
+     * whenever that JSON changes, so entries in the old shape are never read again.
+     * s2 = slots with {@code technicianId} and {@code technicianName}.
+     */
+    public static final String SLOT_SCHEMA = "s2";
 
     /** Lua script that deletes the lock only when it still holds our token. */
     public static final String RELEASE_LOCK_SCRIPT = "redis/release-lock.lua";
@@ -51,4 +57,6 @@ public final class AvailabilityConstants {
     /** JSON fields of one cached slot. */
     public static final String SLOT_FIELD_START = "start";
     public static final String SLOT_FIELD_END = "end";
+    public static final String SLOT_FIELD_TECHNICIAN_ID = "technicianId";
+    public static final String SLOT_FIELD_TECHNICIAN_NAME = "technicianName";
 }

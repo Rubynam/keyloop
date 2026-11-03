@@ -13,6 +13,7 @@ import com.keyloop.scheduler.api.model.availability.Booking;
 import com.keyloop.scheduler.api.model.availability.Dealership;
 import com.keyloop.scheduler.api.model.availability.ServiceBay;
 import com.keyloop.scheduler.api.model.availability.ServiceType;
+import com.keyloop.scheduler.api.model.availability.Technician;
 import com.keyloop.scheduler.api.repository.availability.AvailabilityRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -110,6 +111,24 @@ public class JdbcAvailabilityRepository implements AvailabilityRepository {
                 .param("serviceTypeId", serviceTypeId)
                 .param("vehicleTypeId", vehicleTypeId)
                 .query(UUID.class)
+                .list();
+    }
+
+    @Override
+    public List<Technician> findQualifiedTechnicians(UUID dealershipId, UUID serviceTypeId, UUID vehicleTypeId) {
+        return jdbc.sql("""
+                        SELECT t.id, t.name
+                        FROM technicians t
+                        JOIN technician_skills s ON s.technician_id = t.id
+                        JOIN technician_vehicle_types tv ON tv.technician_id = t.id
+                        WHERE t.dealership_id = :dealershipId AND t.active
+                          AND s.service_type_id = :serviceTypeId
+                          AND tv.vehicle_type_id = :vehicleTypeId
+                        """)
+                .param("dealershipId", dealershipId)
+                .param("serviceTypeId", serviceTypeId)
+                .param("vehicleTypeId", vehicleTypeId)
+                .query((rs, n) -> new Technician(rs.getObject("id", UUID.class), rs.getString("name")))
                 .list();
     }
 

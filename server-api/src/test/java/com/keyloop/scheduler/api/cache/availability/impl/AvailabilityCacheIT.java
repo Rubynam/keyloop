@@ -114,7 +114,9 @@ class AvailabilityCacheIT extends IntegrationTest {
 
         assertThat(second).isEqualTo(first);
         assertThat(starts(second)).contains("09:00");
-        verify(repository, never()).findQualifiedTechnicianIds(any(), any(), any());
+        assertThat(json.readTree(second).get("days").get(0).get("slots").get(0).get("technicianId").asString())
+                .isEqualTo(tech.toString());
+        verify(repository, never()).findQualifiedTechnicians(any(), any(), any());
         verify(repository, never()).findBookings(any(), any(), any(), any(), any());
     }
 
@@ -126,6 +128,10 @@ class AvailabilityCacheIT extends IntegrationTest {
         JsonNode cached = json.readTree(redis.opsForValue().get(key));
         assertThat(cached).hasSize(33);
         assertThat(cached.get(0).get("start").asString()).isEqualTo("2030-01-07T08:00:00Z");
+        assertThat(cached.get(0).get("technicianId").asString()).isEqualTo(tech.toString());
+        assertThat(cached.get(0).get("technicianName").asString()).startsWith("Tech ");
+        // Slot JSON shape is part of the key, so entries without a technician are never read
+        assertThat(key).contains(":v0:s2:");
         // ttl 30 s + padding 0..30 s
         assertThat(redis.getExpire(key, TimeUnit.MILLISECONDS)).isBetween(25_000L, 60_000L);
     }
@@ -188,7 +194,7 @@ class AvailabilityCacheIT extends IntegrationTest {
             assertThat(bodies).hasSize(users).allSatisfy(body -> assertThat(body).isEqualTo(bodies.getFirst()));
             assertThat(starts(bodies.getFirst())).hasSize(33);
         }
-        verify(repository, times(1)).findQualifiedTechnicianIds(dealer, service, vehicleType);
+        verify(repository, times(1)).findQualifiedTechnicians(dealer, service, vehicleType);
     }
 
     @Test
@@ -201,7 +207,7 @@ class AvailabilityCacheIT extends IntegrationTest {
 
         assertThat(Duration.ofNanos(System.nanoTime() - began)).isGreaterThanOrEqualTo(Duration.ofSeconds(2));
         assertThat(starts(body)).hasSize(33);
-        verify(repository, times(1)).findQualifiedTechnicianIds(dealer, service, vehicleType);
+        verify(repository, times(1)).findQualifiedTechnicians(dealer, service, vehicleType);
         assertThat(redis.hasKey(RedisAvailabilityCache.slotsKey(dealer, DAY, 0, bay, service, vehicleType))).isFalse();
         // Never released by a request that does not own it
         assertThat(redis.opsForValue().get(lock)).isEqualTo("another-request");
@@ -243,7 +249,7 @@ class AvailabilityCacheIT extends IntegrationTest {
         clock.set(Instant.parse(DAY + "T10:05:00Z"));
         List<String> starts = starts(get());
 
-        verify(repository, never()).findQualifiedTechnicianIds(any(), any(), any());
+        verify(repository, never()).findQualifiedTechnicians(any(), any(), any());
         assertThat(starts.getFirst()).isEqualTo("10:15");
         assertThat(starts).doesNotContain("08:00", "10:00");
     }
